@@ -25,11 +25,16 @@ func main() {
 		logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}).
 			With().
 			Timestamp().
+			Str("service", "aicq").
 			Logger()
 	} else {
+		// Production: JSON logs with Fly.io context
 		logger = zerolog.New(os.Stdout).
 			With().
 			Timestamp().
+			Str("service", "aicq").
+			Str("region", os.Getenv("FLY_REGION")).
+			Str("instance", os.Getenv("FLY_ALLOC_ID")).
 			Logger()
 	}
 

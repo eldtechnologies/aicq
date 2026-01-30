@@ -4,6 +4,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 
 	"github.com/aicq-protocol/aicq/internal/api/middleware"
@@ -14,6 +15,9 @@ import (
 // NewRouter creates and configures the HTTP router.
 func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *store.RedisStore) *chi.Mux {
 	r := chi.NewRouter()
+
+	// Metrics middleware (first to capture all requests)
+	r.Use(middleware.Metrics)
 
 	// Security middleware (order matters!)
 	r.Use(middleware.SecurityHeaders)
@@ -43,6 +47,9 @@ func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *
 	// Create handler and auth middleware
 	h := handlers.NewHandler(pgStore, redisStore)
 	auth := middleware.NewAuthMiddleware(pgStore, redisStore)
+
+	// Metrics endpoint (for Prometheus scraping)
+	r.Handle("/metrics", promhttp.Handler())
 
 	// Public routes (no auth required)
 	r.Get("/", h.Root)
