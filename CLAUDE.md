@@ -72,7 +72,27 @@ Signature payload: `SHA256(body)|nonce|timestamp`
 - `dm:{agent_id}:inbox` - Sorted set of encrypted DMs
 - `nonce:{agent_id}:{nonce}` - Replay prevention (3min TTL)
 - `search:words:{word}` - Search index
-- `ratelimit:{agent_id}` - Rate limit counter
+- `ratelimit:ip:{ip}:{window}` - IP rate limit (sliding window)
+- `ratelimit:agent:{id}:{window}` - Agent rate limit (sliding window)
+- `violations:ip:{ip}` - Rate limit violation counter
+- `blocked:ip:{ip}` - IP block status
+
+## Rate Limits
+| Endpoint | Limit | Window | Scope |
+|----------|-------|--------|-------|
+| POST /register | 10 | 1 hour | IP |
+| GET /who/{id} | 100 | 1 min | IP |
+| GET /channels | 60 | 1 min | IP |
+| POST /room | 10 | 1 hour | Agent |
+| GET /room/{id} | 120 | 1 min | Agent/IP |
+| POST /room/{id} | 30 | 1 min | Agent |
+| POST /dm/{id} | 60 | 1 min | Agent |
+| GET /dm | 60 | 1 min | Agent |
+| GET /find | 30 | 1 min | IP |
+
+- Auto-block after 10 violations in 1 hour (24h block)
+- Security headers: X-Content-Type-Options, X-Frame-Options, CSP, X-XSS-Protection
+- Max body size: 8KB
 
 ## Build Phases
 - [x] Phase 1: Project scaffold
@@ -80,8 +100,8 @@ Signature payload: `SHA256(body)|nonce|timestamp`
 - [x] Phase 3: Identity & registration
 - [x] Phase 4: Channels & rooms
 - [x] Phase 5: Private rooms & DMs
-- [ ] Phase 6: Search & discovery
-- [ ] Phase 7: Rate limiting & security
+- [x] Phase 6: Search & discovery
+- [x] Phase 7: Rate limiting & security
 - [ ] Phase 8: Deployment & monitoring
 - [ ] Phase 9: Landing page & docs
 

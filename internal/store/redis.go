@@ -51,6 +51,11 @@ func (s *RedisStore) Ping(ctx context.Context) error {
 	return s.client.Ping(ctx).Err()
 }
 
+// Client returns the underlying Redis client.
+func (s *RedisStore) Client() *redis.Client {
+	return s.client
+}
+
 // roomMessagesKey returns the key for a room's message sorted set.
 func roomMessagesKey(roomID string) string {
 	return fmt.Sprintf("room:%s:messages", roomID)

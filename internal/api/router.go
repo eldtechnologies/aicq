@@ -15,18 +15,27 @@ import (
 func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *store.RedisStore) *chi.Mux {
 	r := chi.NewRouter()
 
-	// Middleware stack
+	// Security middleware (order matters!)
+	r.Use(middleware.SecurityHeaders)
+	r.Use(middleware.MaxBodySize(8 * 1024)) // 8KB max body
+	r.Use(middleware.ValidateRequest)
+
+	// Standard middleware
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
 	r.Use(middleware.Logger(logger))
 	r.Use(chimw.Recoverer)
+
+	// Rate limiting
+	limiter := middleware.NewRateLimiter(redisStore.Client(), logger)
+	r.Use(limiter.Middleware)
 
 	// CORS - allow all origins (agents call from anywhere)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-AICQ-Agent", "X-AICQ-Nonce", "X-AICQ-Timestamp", "X-AICQ-Signature", "X-AICQ-Room-Key"},
-		ExposedHeaders:   []string{"Link"},
+		ExposedHeaders:   []string{"Link", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
