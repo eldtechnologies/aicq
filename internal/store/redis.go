@@ -193,41 +193,68 @@ func (s *RedisStore) IndexMessage(ctx context.Context, msg *models.Message) erro
 	return nil
 }
 
-// Search searches for messages containing the query words.
+// Search searches for messages containing the query words (legacy method).
 func (s *RedisStore) Search(ctx context.Context, query string, limit int) ([]models.Message, error) {
-	// Tokenize query
 	words := wordRegex.FindAllString(strings.ToLower(query), -1)
 	if len(words) == 0 {
 		return nil, nil
 	}
+	return s.SearchMessages(ctx, words, limit, 0, "")
+}
+
+// SearchMessages searches for messages with filters.
+func (s *RedisStore) SearchMessages(ctx context.Context, tokens []string, limit int, after int64, roomFilter string) ([]models.Message, error) {
+	if len(tokens) == 0 {
+		return []models.Message{}, nil
+	}
+
+	// Build keys for all tokens
+	keys := make([]string, len(tokens))
+	for i, t := range tokens {
+		keys[i] = searchWordKey(t)
+	}
 
 	var refs []string
 
-	if len(words) == 1 {
-		// Single word search
-		key := searchWordKey(words[0])
-		refs, _ = s.client.ZRevRange(ctx, key, 0, int64(limit)-1).Result()
-	} else {
-		// Multi-word search - use intersection
-		keys := make([]string, len(words))
-		for i, word := range words {
-			keys[i] = searchWordKey(word)
+	if len(keys) == 1 {
+		// Single word: simple range query
+		minScore := "-inf"
+		if after > 0 {
+			minScore = fmt.Sprintf("(%d", after) // exclusive
 		}
 
-		// Store intersection in temp key
+		refs, _ = s.client.ZRevRangeByScore(ctx, keys[0], &redis.ZRangeBy{
+			Min:   minScore,
+			Max:   "+inf",
+			Count: int64(limit * 3), // Fetch extra for filtering
+		}).Result()
+	} else {
+		// Multiple words: use ZINTER
 		tempKey := fmt.Sprintf("search:temp:%d", time.Now().UnixNano())
+
 		s.client.ZInterStore(ctx, tempKey, &redis.ZStore{
 			Keys:      keys,
 			Aggregate: "MIN",
 		})
-		s.client.Expire(ctx, tempKey, time.Minute)
+		s.client.Expire(ctx, tempKey, 10*time.Second)
 
-		refs, _ = s.client.ZRevRange(ctx, tempKey, 0, int64(limit)-1).Result()
+		// Get results with time filter
+		minScore := "-inf"
+		if after > 0 {
+			minScore = fmt.Sprintf("(%d", after)
+		}
+
+		refs, _ = s.client.ZRevRangeByScore(ctx, tempKey, &redis.ZRangeBy{
+			Min:   minScore,
+			Max:   "+inf",
+			Count: int64(limit * 3),
+		}).Result()
+
 		s.client.Del(ctx, tempKey)
 	}
 
-	// Fetch full messages
-	messages := make([]models.Message, 0, len(refs))
+	// Fetch actual messages with filtering
+	messages := make([]models.Message, 0, limit)
 	for _, ref := range refs {
 		parts := strings.SplitN(ref, ":", 2)
 		if len(parts) != 2 {
@@ -235,11 +262,22 @@ func (s *RedisStore) Search(ctx context.Context, query string, limit int) ([]mod
 		}
 		roomID, msgID := parts[0], parts[1]
 
-		msg, err := s.GetMessage(ctx, roomID, msgID)
-		if err != nil || msg == nil {
+		// Room filter
+		if roomFilter != "" && roomID != roomFilter {
 			continue
 		}
+
+		// Fetch message
+		msg, err := s.GetMessage(ctx, roomID, msgID)
+		if err != nil || msg == nil {
+			continue // Message expired
+		}
+
 		messages = append(messages, *msg)
+
+		if len(messages) >= limit {
+			break
+		}
 	}
 
 	return messages, nil

@@ -42,6 +42,7 @@ func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *
 	r.Get("/who/{id}", h.Who)
 	r.Get("/channels", h.ListChannels)
 	r.Get("/room/{id}", h.GetRoomMessages) // Public rooms open, private rooms need key header
+	r.Get("/find", h.Search)               // Search public messages
 
 	// Authenticated routes (require signature)
 	r.Group(func(r chi.Router) {
