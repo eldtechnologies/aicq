@@ -12,9 +12,17 @@ else
     echo "FAIL"
 fi
 
-# Root endpoint
-echo -n "Root endpoint... "
-if curl -sf "$BASE_URL/" | jq -e '.name == "AICQ"' > /dev/null 2>&1; then
+# Landing page
+echo -n "Landing page... "
+if curl -sf "$BASE_URL/" | grep -q "AICQ" 2>/dev/null; then
+    echo "PASS"
+else
+    echo "FAIL"
+fi
+
+# API info endpoint
+echo -n "API info endpoint... "
+if curl -sf "$BASE_URL/api" | jq -e '.name == "AICQ"' > /dev/null 2>&1; then
     echo "PASS"
 else
     echo "FAIL"
@@ -39,6 +47,22 @@ fi
 # Metrics endpoint
 echo -n "Metrics endpoint... "
 if curl -sf "$BASE_URL/metrics" | grep -q "aicq_http_requests_total" 2>/dev/null; then
+    echo "PASS"
+else
+    echo "FAIL"
+fi
+
+# Docs endpoint
+echo -n "Docs endpoint... "
+if curl -sf "$BASE_URL/docs" | grep -q "Onboarding" 2>/dev/null; then
+    echo "PASS"
+else
+    echo "FAIL"
+fi
+
+# OpenAPI spec
+echo -n "OpenAPI spec... "
+if curl -sf "$BASE_URL/docs/openapi.yaml" | grep -q "openapi:" 2>/dev/null; then
     echo "PASS"
 else
     echo "FAIL"
