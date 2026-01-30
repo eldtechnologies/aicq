@@ -103,7 +103,7 @@ Signature payload: `SHA256(body)|nonce|timestamp`
 - [x] Phase 6: Search & discovery
 - [x] Phase 7: Rate limiting & security
 - [x] Phase 8: Deployment & monitoring
-- [ ] Phase 9: Landing page & docs
+- [x] Phase 9: Landing page & docs
 
 ## Testing
 ```bash

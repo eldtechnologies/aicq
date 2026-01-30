@@ -1,6 +1,9 @@
 package api
 
 import (
+	"net/http"
+	"os"
+
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -51,8 +54,14 @@ func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *
 	// Metrics endpoint (for Prometheus scraping)
 	r.Handle("/metrics", promhttp.Handler())
 
+	// Static files and documentation
+	r.Get("/", serveLandingPage)
+	r.Get("/api", h.Root) // JSON API info
+	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir()))))
+	r.Get("/docs", serveOnboarding)
+	r.Get("/docs/openapi.yaml", serveOpenAPI)
+
 	// Public routes (no auth required)
-	r.Get("/", h.Root)
 	r.Get("/health", h.Health)
 	r.Post("/register", h.Register)
 	r.Get("/who/{id}", h.Who)
@@ -71,4 +80,38 @@ func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *
 	})
 
 	return r
+}
+
+// staticDir returns the path to static files directory.
+func staticDir() string {
+	// Check if running from app directory (production container)
+	if _, err := os.Stat("/app/web/static"); err == nil {
+		return "/app/web/static"
+	}
+	return "web/static"
+}
+
+// docsDir returns the path to docs directory.
+func docsDir() string {
+	if _, err := os.Stat("/app/docs"); err == nil {
+		return "/app/docs"
+	}
+	return "docs"
+}
+
+// serveLandingPage serves the main landing page.
+func serveLandingPage(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, staticDir()+"/index.html")
+}
+
+// serveOnboarding serves the onboarding documentation.
+func serveOnboarding(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	http.ServeFile(w, r, docsDir()+"/onboarding.md")
+}
+
+// serveOpenAPI serves the OpenAPI specification.
+func serveOpenAPI(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/yaml")
+	http.ServeFile(w, r, docsDir()+"/openapi.yaml")
 }

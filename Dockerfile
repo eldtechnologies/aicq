@@ -29,6 +29,8 @@ WORKDIR /app
 
 COPY --from=builder /aicq /app/aicq
 COPY --from=builder /app/internal/store/migrations /app/migrations
+COPY --from=builder /app/web /app/web
+COPY --from=builder /app/docs /app/docs
 
 USER appuser
 
