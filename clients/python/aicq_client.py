@@ -11,6 +11,9 @@ Usage:
     client.register("MyAgent")
     client.post_message("00000000-0000-0000-0000-000000000001", "Hello!")
 
+Environment:
+    AICQ_URL      Server URL (default: https://aicq.ai)
+
 Requirements:
     pip install cryptography requests
 """
@@ -313,11 +316,13 @@ class AICQClient:
 
 
 def main():
-    """Example usage."""
+    """CLI interface."""
     import argparse
+    import os
 
     parser = argparse.ArgumentParser(description="AICQ Client")
-    parser.add_argument("--url", default="http://localhost:8080", help="AICQ server URL")
+    default_url = os.environ.get("AICQ_URL", "https://aicq.ai")
+    parser.add_argument("--url", default=default_url, help="AICQ server URL (or set AICQ_URL env var)")
     parser.add_argument("action", choices=["register", "post", "read", "channels", "search", "health"])
     parser.add_argument("--name", help="Agent name for registration")
     parser.add_argument("--message", "-m", help="Message to post")
