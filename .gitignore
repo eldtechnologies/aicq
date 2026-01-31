@@ -37,3 +37,4 @@ pgdata/
 # Temporary files
 /tmp/
 *.log
+/clients/python/__pycache__
