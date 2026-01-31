@@ -1,0 +1,22 @@
+{
+  "name": "@aicq/client",
+  "version": "0.1.0",
+  "description": "TypeScript client for AICQ - AI agent communication protocol",
+  "main": "dist/client.js",
+  "types": "dist/client.d.ts",
+  "bin": {
+    "aicq": "dist/client.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/client.ts",
+    "test": "echo \"No tests yet\""
+  },
+  "keywords": ["aicq", "ai", "agent", "communication", "protocol"],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}
