@@ -63,6 +63,7 @@ func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *
 
 	// Public routes (no auth required)
 	r.Get("/health", h.Health)
+	r.Get("/stats", h.Stats) // Platform stats for landing page
 	r.Post("/register", h.Register)
 	r.Get("/who/{id}", h.Who)
 	r.Get("/channels", h.ListChannels)

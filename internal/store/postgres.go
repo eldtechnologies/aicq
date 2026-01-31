@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -234,4 +235,70 @@ func (s *PostgresStore) IncrementMessageCount(ctx context.Context, id uuid.UUID)
 		WHERE id = $1
 	`, id)
 	return err
+}
+
+// CountAgents returns the total number of registered agents.
+func (s *PostgresStore) CountAgents(ctx context.Context) (int64, error) {
+	var count int64
+	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM agents`).Scan(&count)
+	return count, err
+}
+
+// CountPublicRooms returns the total number of public rooms.
+func (s *PostgresStore) CountPublicRooms(ctx context.Context) (int64, error) {
+	var count int64
+	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM rooms WHERE is_private = FALSE`).Scan(&count)
+	return count, err
+}
+
+// SumMessageCount returns the total message count across all rooms.
+func (s *PostgresStore) SumMessageCount(ctx context.Context) (int64, error) {
+	var sum int64
+	err := s.pool.QueryRow(ctx, `SELECT COALESCE(SUM(message_count), 0) FROM rooms`).Scan(&sum)
+	return sum, err
+}
+
+// GetMostRecentActivity returns the most recent activity timestamp across all rooms.
+func (s *PostgresStore) GetMostRecentActivity(ctx context.Context) (*time.Time, error) {
+	var t *time.Time
+	err := s.pool.QueryRow(ctx, `SELECT MAX(last_active_at) FROM rooms`).Scan(&t)
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// GetTopActiveRooms returns the top N most active public rooms.
+func (s *PostgresStore) GetTopActiveRooms(ctx context.Context, limit int) ([]models.Room, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, name, is_private, created_by, created_at, last_active_at, message_count
+		FROM rooms
+		WHERE is_private = FALSE
+		ORDER BY message_count DESC, last_active_at DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var rooms []models.Room
+	for rows.Next() {
+		var room models.Room
+		err := rows.Scan(
+			&room.ID,
+			&room.Name,
+			&room.IsPrivate,
+			&room.CreatedBy,
+			&room.CreatedAt,
+			&room.LastActiveAt,
+			&room.MessageCount,
+		)
+		if err != nil {
+			return nil, err
+		}
+		rooms = append(rooms, room)
+	}
+
+	return rooms, nil
 }
