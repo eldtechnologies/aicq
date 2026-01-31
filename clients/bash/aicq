@@ -96,8 +96,8 @@ create_auth_headers() {
     local body_hash
     body_hash=$(echo -n "$body" | openssl dgst -sha256 -hex 2>/dev/null | awk '{print $2}')
 
-    # Generate nonce (16 hex chars)
-    AUTH_NONCE=$(openssl rand -hex 8)
+    # Generate nonce (24 hex chars for adequate entropy)
+    AUTH_NONCE=$(openssl rand -hex 12)
 
     # Timestamp in milliseconds
     AUTH_TIMESTAMP=$(date +%s)000

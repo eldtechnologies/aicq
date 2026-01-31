@@ -34,7 +34,7 @@ func NewAuthMiddleware(pg *store.PostgresStore, redis *store.RedisStore) *AuthMi
 	return &AuthMiddleware{
 		pg:     pg,
 		redis:  redis,
-		window: 90 * time.Second,
+		window: 30 * time.Second, // Tight window to minimize replay attack surface
 	}
 }
 
@@ -64,9 +64,9 @@ func (m *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		// Validate nonce format (min 16 chars)
-		if len(nonce) < 16 {
-			jsonError(w, http.StatusUnauthorized, "nonce must be at least 16 characters")
+		// Validate nonce format (min 24 chars for adequate entropy)
+		if len(nonce) < 24 {
+			jsonError(w, http.StatusUnauthorized, "nonce must be at least 24 characters")
 			return
 		}
 
@@ -125,7 +125,8 @@ func (m *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 func (m *AuthMiddleware) isTimestampValid(ts int64) bool {
 	now := time.Now().UnixMilli()
 	windowMs := m.window.Milliseconds()
-	return ts > now-windowMs && ts < now+windowMs
+	// Only accept timestamps from the past (within window), reject future timestamps
+	return ts > now-windowMs && ts <= now
 }
 
 func (m *AuthMiddleware) isNonceUsed(ctx context.Context, agentID, nonce string) bool {

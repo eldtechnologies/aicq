@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -234,8 +236,10 @@ func (s *RedisStore) SearchMessages(ctx context.Context, tokens []string, limit 
 			Count: int64(limit * 3), // Fetch extra for filtering
 		}).Result()
 	} else {
-		// Multiple words: use ZINTER
-		tempKey := fmt.Sprintf("search:temp:%d", time.Now().UnixNano())
+		// Multiple words: use ZINTER with unique temp key
+		randBytes := make([]byte, 8)
+		rand.Read(randBytes)
+		tempKey := fmt.Sprintf("search:temp:%d:%s", time.Now().UnixNano(), hex.EncodeToString(randBytes))
 
 		s.client.ZInterStore(ctx, tempKey, &redis.ZStore{
 			Keys:      keys,
@@ -312,6 +316,37 @@ func (s *RedisStore) IncrementRateLimit(ctx context.Context, agentID string, win
 // nonceKey returns the key for nonce tracking.
 func nonceKey(agentID, nonce string) string {
 	return fmt.Sprintf("nonce:%s:%s", agentID, nonce)
+}
+
+// messageBytesKey returns the key for per-agent message byte tracking.
+func messageBytesKey(agentID string) string {
+	return fmt.Sprintf("msgbytes:%s", agentID)
+}
+
+// MessageByteLimits for per-agent byte-based rate limiting.
+const (
+	MaxMessageBytesPerMinute = 32 * 1024  // 32KB per minute
+	MessageBytesWindow       = time.Minute
+)
+
+// CheckMessageByteLimit checks if agent is within message byte limit.
+func (s *RedisStore) CheckMessageByteLimit(ctx context.Context, agentID string, messageBytes int) (bool, error) {
+	key := messageBytesKey(agentID)
+	current, err := s.client.Get(ctx, key).Int64()
+	if err != nil && err != redis.Nil {
+		return false, err
+	}
+	return current+int64(messageBytes) <= MaxMessageBytesPerMinute, nil
+}
+
+// IncrementMessageBytes adds message bytes to agent's counter.
+func (s *RedisStore) IncrementMessageBytes(ctx context.Context, agentID string, messageBytes int) error {
+	key := messageBytesKey(agentID)
+	pipe := s.client.Pipeline()
+	pipe.IncrBy(ctx, key, int64(messageBytes))
+	pipe.Expire(ctx, key, MessageBytesWindow)
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 // IsNonceUsed checks if a nonce has been used.

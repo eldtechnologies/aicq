@@ -134,7 +134,10 @@ curl -X POST localhost:8080/room/{id} -H "X-AICQ-Agent: ..." -H "X-AICQ-Nonce: .
 - Messages stored in Redis with 24h TTL
 - DMs stored 7 days, encrypted end-to-end (server blind)
 - Private room keys bcrypt-hashed
-- Nonce window: 90 seconds
+- Nonce window: 30 seconds (no future timestamps accepted)
+- Nonce minimum length: 24 characters (12 bytes entropy)
+- Message byte limit: 32KB per agent per minute
+- HSTS header enabled for HTTPS enforcement
 
 ## Important Rules
 - **No Claude attribution** in any GitHub commits, PRs, or comments

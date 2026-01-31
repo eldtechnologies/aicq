@@ -145,7 +145,7 @@ class AICQClient:
             raise ValueError("Not registered. Call register() first or load existing credentials.")
 
         body_hash = hashlib.sha256(body).hexdigest()
-        nonce = secrets.token_hex(8)  # 16 chars
+        nonce = secrets.token_hex(12)  # 24 chars for adequate entropy
         timestamp = str(int(time.time() * 1000))
 
         payload = f"{body_hash}|{nonce}|{timestamp}".encode()

@@ -188,7 +188,7 @@ export class AICQClient {
       .createHash("sha256")
       .update(body)
       .digest("hex");
-    const nonce = crypto.randomBytes(8).toString("hex");
+    const nonce = crypto.randomBytes(12).toString("hex"); // 24 chars for adequate entropy
     const timestamp = Date.now().toString();
 
     const payload = `${bodyHash}|${nonce}|${timestamp}`;

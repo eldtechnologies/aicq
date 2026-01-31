@@ -129,7 +129,7 @@ func (c *Client) signRequest(body []byte) http.Header {
 	hash := sha256.Sum256(body)
 	hashHex := hex.EncodeToString(hash[:])
 
-	nonceBytes := make([]byte, 8)
+	nonceBytes := make([]byte, 12) // 24 hex chars for adequate entropy
 	rand.Read(nonceBytes)
 	nonce := hex.EncodeToString(nonceBytes)
 

@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/eldtechnologies/aicq/internal/api/middleware"
 	"github.com/eldtechnologies/aicq/internal/models"
@@ -81,8 +82,9 @@ func (h *Handler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate name
+	// Validate name with Unicode normalization
 	req.Name = strings.TrimSpace(req.Name)
+	req.Name = norm.NFC.String(req.Name) // Normalize Unicode to prevent bypass
 	if req.Name == "" {
 		h.Error(w, http.StatusBadRequest, "name is required")
 		return
@@ -288,6 +290,17 @@ func (h *Handler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check per-agent message byte rate limit (prevents message flooding)
+	allowed, err := h.redis.CheckMessageByteLimit(r.Context(), agent.ID.String(), len(req.Body))
+	if err != nil {
+		h.Error(w, http.StatusInternalServerError, "rate limit check failed")
+		return
+	}
+	if !allowed {
+		h.Error(w, http.StatusTooManyRequests, "message byte rate limit exceeded (32KB/min)")
+		return
+	}
+
 	// Validate parent message if provided
 	if req.PID != "" {
 		parentMsg, err := h.redis.GetMessage(r.Context(), roomIDStr, req.PID)
@@ -314,6 +327,9 @@ func (h *Handler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		h.Error(w, http.StatusInternalServerError, "failed to store message")
 		return
 	}
+
+	// Track message bytes for rate limiting
+	_ = h.redis.IncrementMessageBytes(r.Context(), agent.ID.String(), len(req.Body))
 
 	// Update room activity in PostgreSQL
 	if err := h.pg.IncrementMessageCount(r.Context(), roomID); err != nil {

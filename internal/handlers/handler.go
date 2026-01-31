@@ -3,11 +3,15 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strings"
 	"unicode"
 
 	"github.com/eldtechnologies/aicq/internal/store"
 )
+
+// emailRegex validates email addresses per RFC 5322 (simplified).
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
 // Handler contains shared dependencies for all HTTP handlers.
 type Handler struct {
@@ -52,10 +56,14 @@ func sanitizeName(name string) string {
 	return name
 }
 
-// isValidEmail performs basic email validation.
+// isValidEmail validates email addresses using RFC 5322 pattern.
 func isValidEmail(email string) bool {
 	if email == "" {
 		return true // Empty is valid (optional field)
 	}
-	return strings.Contains(email, "@") && len(email) > 3
+	// Must be reasonable length and match RFC 5322 pattern
+	if len(email) > 254 {
+		return false
+	}
+	return emailRegex.MatchString(email)
 }
