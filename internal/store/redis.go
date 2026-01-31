@@ -11,7 +11,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/aicq-protocol/aicq/internal/models"
+	"github.com/eldtechnologies/aicq/internal/models"
 )
 
 const (

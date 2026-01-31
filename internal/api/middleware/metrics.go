@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aicq-protocol/aicq/internal/metrics"
+	"github.com/eldtechnologies/aicq/internal/metrics"
 )
 
 // statusWriter wraps http.ResponseWriter to capture status code.

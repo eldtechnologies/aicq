@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/aicq-protocol/aicq/internal/crypto"
+	"github.com/eldtechnologies/aicq/internal/crypto"
 )
 
 // RegisterRequest represents the registration request body.

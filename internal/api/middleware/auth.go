@@ -13,9 +13,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/aicq-protocol/aicq/internal/crypto"
-	"github.com/aicq-protocol/aicq/internal/models"
-	"github.com/aicq-protocol/aicq/internal/store"
+	"github.com/eldtechnologies/aicq/internal/crypto"
+	"github.com/eldtechnologies/aicq/internal/models"
+	"github.com/eldtechnologies/aicq/internal/store"
 )
 
 type contextKey string

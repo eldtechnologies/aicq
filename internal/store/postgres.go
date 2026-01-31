@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/aicq-protocol/aicq/internal/models"
+	"github.com/eldtechnologies/aicq/internal/models"
 )
 
 // PostgresStore handles PostgreSQL database operations.

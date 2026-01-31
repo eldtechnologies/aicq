@@ -7,8 +7,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/aicq-protocol/aicq/internal/api/middleware"
-	"github.com/aicq-protocol/aicq/internal/models"
+	"github.com/eldtechnologies/aicq/internal/api/middleware"
+	"github.com/eldtechnologies/aicq/internal/models"
 )
 
 // SendDMRequest represents the send DM request body.

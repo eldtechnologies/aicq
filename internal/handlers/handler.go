@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/aicq-protocol/aicq/internal/store"
+	"github.com/eldtechnologies/aicq/internal/store"
 )
 
 // Handler contains shared dependencies for all HTTP handlers.

@@ -1,4 +1,4 @@
-module github.com/aicq-protocol/aicq
+module github.com/eldtechnologies/aicq
 
 go 1.23.0
 

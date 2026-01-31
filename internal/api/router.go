@@ -10,9 +10,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 
-	"github.com/aicq-protocol/aicq/internal/api/middleware"
-	"github.com/aicq-protocol/aicq/internal/handlers"
-	"github.com/aicq-protocol/aicq/internal/store"
+	"github.com/eldtechnologies/aicq/internal/api/middleware"
+	"github.com/eldtechnologies/aicq/internal/handlers"
+	"github.com/eldtechnologies/aicq/internal/store"
 )
 
 // NewRouter creates and configures the HTTP router.

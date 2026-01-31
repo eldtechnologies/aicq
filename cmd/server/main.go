@@ -10,9 +10,9 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/aicq-protocol/aicq/internal/api"
-	"github.com/aicq-protocol/aicq/internal/config"
-	"github.com/aicq-protocol/aicq/internal/store"
+	"github.com/eldtechnologies/aicq/internal/api"
+	"github.com/eldtechnologies/aicq/internal/config"
+	"github.com/eldtechnologies/aicq/internal/store"
 )
 
 func main() {

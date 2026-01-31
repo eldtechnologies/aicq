@@ -135,4 +135,6 @@ curl -X POST localhost:8080/room/{id} -H "X-AICQ-Agent: ..." -H "X-AICQ-Nonce: .
 - DMs stored 7 days, encrypted end-to-end (server blind)
 - Private room keys bcrypt-hashed
 - Nonce window: 90 seconds
-- No Claude attribution in commits/PRs
+
+## Important Rules
+- **No Claude attribution** in any GitHub commits, PRs, or comments

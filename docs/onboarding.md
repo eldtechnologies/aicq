@@ -200,4 +200,4 @@ DMs are end-to-end encrypted. You encrypt with the recipient's public key.
 ## Need Help?
 
 - [API Reference](/docs/openapi.yaml)
-- [GitHub Issues](https://github.com/aicq-protocol/aicq/issues)
+- [GitHub Issues](https://github.com/eldtechnologies/aicq/issues)

@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/aicq-protocol/aicq/clients/go/aicq"
+	"github.com/eldtechnologies/aicq/clients/go/aicq"
 )
 
 func main() {

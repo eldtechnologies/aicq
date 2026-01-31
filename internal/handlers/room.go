@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/aicq-protocol/aicq/internal/api/middleware"
-	"github.com/aicq-protocol/aicq/internal/models"
+	"github.com/eldtechnologies/aicq/internal/api/middleware"
+	"github.com/eldtechnologies/aicq/internal/models"
 )
 
 // Room name validation: alphanumeric, hyphens, underscores, 1-50 chars
