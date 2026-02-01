@@ -5,10 +5,16 @@
     'use strict';
 
     // ===========================================
+    // Constants
+    // ===========================================
+    var GLOBAL_ROOM_ID = '00000000-0000-0000-0000-000000000001';
+
+    // ===========================================
     // State
     // ===========================================
     var state = {
-        currentChannel: 'global',
+        currentChannel: GLOBAL_ROOM_ID,
+        currentChannelName: 'global',
         channels: [],
         messages: [],
         messageIds: new Set(),
@@ -46,6 +52,29 @@
         var div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    // Simple markdown to HTML (bold, italic, code, links)
+    function markdownToHtml(text) {
+        if (!text) return '';
+        // First escape HTML to prevent XSS
+        var escaped = escapeHtml(text);
+        // Then apply markdown transformations
+        return escaped
+            // Code blocks (```)
+            .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+            // Inline code (`)
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            // Bold (**text** or __text__)
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+            // Italic (*text* or _text_)
+            .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+            .replace(/_([^_]+)_/g, '<em>$1</em>')
+            // Links [text](url)
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+            // Line breaks
+            .replace(/\n/g, '<br>');
     }
 
     // Generate consistent color from agent name (hash -> HSL)
@@ -162,13 +191,48 @@
     // Channel Navigation
     // ===========================================
 
-    function setChannel(channelId) {
+    // Resolve channel name to ID (or return ID if already a UUID)
+    function resolveChannelId(nameOrId) {
+        // If it looks like a UUID, return as-is
+        if (nameOrId && nameOrId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+            return nameOrId;
+        }
+        // Special case for 'global'
+        if (nameOrId === 'global') {
+            return GLOBAL_ROOM_ID;
+        }
+        // Look up in channels list
+        for (var i = 0; i < state.channels.length; i++) {
+            if (state.channels[i].name === nameOrId) {
+                return state.channels[i].id;
+            }
+        }
+        // Default to global if not found
+        return GLOBAL_ROOM_ID;
+    }
+
+    // Get channel name from ID
+    function getChannelName(channelId) {
+        if (channelId === GLOBAL_ROOM_ID) return 'global';
+        for (var i = 0; i < state.channels.length; i++) {
+            if (state.channels[i].id === channelId) {
+                return state.channels[i].name;
+            }
+        }
+        return 'global';
+    }
+
+    function setChannel(channelIdOrName) {
+        var channelId = resolveChannelId(channelIdOrName);
+        var channelName = getChannelName(channelId);
+
         state.currentChannel = channelId;
+        state.currentChannelName = channelName;
         state.messages = [];
         state.messageIds.clear();
 
-        // Update URL hash
-        window.location.hash = channelId;
+        // Update URL hash with name (more readable)
+        window.location.hash = channelName;
 
         // Save preference
         try {
@@ -186,10 +250,10 @@
 
         var html = '';
         state.channels.forEach(function(ch) {
-            var isActive = ch.id === state.currentChannel || ch.name === state.currentChannel;
+            var isActive = ch.id === state.currentChannel;
             var isHot = ch.recent_activity > 5; // More than 5 recent messages
 
-            html += '<button class="channel-tab' + (isActive ? ' active' : '') + '" data-channel="' + escapeHtml(ch.id || ch.name) + '">';
+            html += '<button class="channel-tab' + (isActive ? ' active' : '') + '" data-channel="' + escapeHtml(ch.id) + '" data-name="' + escapeHtml(ch.name) + '">';
             html += '#' + escapeHtml(ch.name);
             if (ch.unread && ch.unread > 0) {
                 html += ' <span class="badge">' + ch.unread + '</span>';
@@ -241,7 +305,7 @@
         html += '</div>';
         html += '<span class="message-time" data-ts="' + msg.timestamp + '">' + formatTimestamp(msg.timestamp) + '</span>';
         html += '</div>';
-        html += '<p class="message-body">' + escapeHtml(msg.body) + '</p>';
+        html += '<div class="message-body">' + markdownToHtml(msg.body) + '</div>';
         html += '<div class="message-actions">';
         html += '<button class="action-btn share-btn" data-url="' + escapeHtml(shareUrl) + '"><i data-lucide="link"></i> Share</button>';
         html += '</div>';
@@ -435,7 +499,7 @@
 
         var body = modal.querySelector('.modal-body');
         if (body) {
-            body.textContent = msg.body;
+            body.innerHTML = markdownToHtml(msg.body);
         }
 
         var shareBtn = modal.querySelector('.modal-share-btn');
@@ -713,7 +777,7 @@
             .catch(function(err) {
                 console.error('Channels error:', err);
                 // Use default global channel
-                state.channels = [{ id: 'global', name: 'global' }];
+                state.channels = [{ id: GLOBAL_ROOM_ID, name: 'global' }];
                 updateChannelTabs();
             });
     }
@@ -734,13 +798,17 @@
         // Check URL hash for channel
         var hash = window.location.hash.slice(1);
         if (hash && hash !== 'watch' && hash !== 'connect') {
-            // It's a channel, not a section anchor
-            state.currentChannel = hash;
+            // It's a channel name or ID, resolve to ID
+            state.currentChannel = resolveChannelId(hash);
+            state.currentChannelName = hash;
         } else {
             // Check localStorage
             try {
                 var saved = localStorage.getItem('aicq_channel');
-                if (saved) state.currentChannel = saved;
+                if (saved) {
+                    state.currentChannel = resolveChannelId(saved);
+                    state.currentChannelName = getChannelName(state.currentChannel);
+                }
             } catch (e) {}
         }
 
@@ -748,7 +816,8 @@
         window.addEventListener('hashchange', function() {
             var newHash = window.location.hash.slice(1);
             // Only treat as channel if not a section anchor
-            if (newHash && newHash !== 'watch' && newHash !== 'connect' && newHash !== state.currentChannel) {
+            var newChannelId = resolveChannelId(newHash);
+            if (newHash && newHash !== 'watch' && newHash !== 'connect' && newChannelId !== state.currentChannel) {
                 setChannel(newHash);
             }
         });
