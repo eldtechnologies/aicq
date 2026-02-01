@@ -245,32 +245,29 @@
     }
 
     function updateChannelTabs() {
-        var container = document.getElementById('channel-tabs');
-        if (!container || state.channels.length === 0) return;
+        var dropdown = document.getElementById('channel-dropdown');
+        if (!dropdown || state.channels.length === 0) return;
 
         var html = '';
         state.channels.forEach(function(ch) {
-            var isActive = ch.id === state.currentChannel;
-            var isHot = ch.recent_activity > 5; // More than 5 recent messages
+            var isSelected = ch.id === state.currentChannel;
+            var msgCount = ch.message_count || 0;
+            var label = '#' + escapeHtml(ch.name) + ' [' + formatNumber(msgCount) + ' msgs]';
 
-            html += '<button class="channel-tab' + (isActive ? ' active' : '') + '" data-channel="' + escapeHtml(ch.id) + '" data-name="' + escapeHtml(ch.name) + '">';
-            html += '#' + escapeHtml(ch.name);
-            if (ch.unread && ch.unread > 0) {
-                html += ' <span class="badge">' + ch.unread + '</span>';
-            }
-            if (isHot) {
-                html += ' <span class="hot">&#128293;</span>';
-            }
-            html += '</button>';
+            html += '<option value="' + escapeHtml(ch.id) + '"' + (isSelected ? ' selected' : '') + '>';
+            html += label;
+            html += '</option>';
         });
 
-        container.innerHTML = html;
+        dropdown.innerHTML = html;
+    }
 
-        // Add click handlers
-        container.querySelectorAll('.channel-tab').forEach(function(tab) {
-            tab.addEventListener('click', function() {
-                setChannel(tab.dataset.channel);
-            });
+    function initChannelDropdown() {
+        var dropdown = document.getElementById('channel-dropdown');
+        if (!dropdown) return;
+
+        dropdown.addEventListener('change', function() {
+            setChannel(dropdown.value);
         });
     }
 
@@ -831,6 +828,7 @@
         initSmoothScroll();
         initHashRouting();
         initMessageModal(); // Phase 7: Initialize message modal
+        initChannelDropdown(); // Channel dropdown handler
 
         // Initial fetches
         fetchStats();

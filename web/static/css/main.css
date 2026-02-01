@@ -420,69 +420,46 @@ pre code {
 }
 
 /* ============================================
-   CHANNEL TABS
+   CHANNEL SELECTOR
    ============================================ */
 
-.channel-tabs {
-    display: flex;
-    gap: 0.5rem;
-    overflow-x: auto;
-    padding-bottom: 0.5rem;
+.channel-selector {
     margin-bottom: 1.5rem;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
 }
 
-.channel-tabs::-webkit-scrollbar {
-    height: 4px;
-}
-
-.channel-tabs::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.channel-tabs::-webkit-scrollbar-thumb {
-    background: var(--border);
-    border-radius: 2px;
-}
-
-.channel-tab {
-    padding: 0.5rem 1rem;
-    font-size: 0.85rem;
-    color: var(--text-secondary);
+.channel-dropdown {
+    width: 100%;
+    max-width: 400px;
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+    font-family: inherit;
+    color: var(--text);
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 20px;
+    border-radius: 8px;
     cursor: pointer;
-    white-space: nowrap;
     transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2388888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    padding-right: 2.5rem;
 }
 
-.channel-tab:hover {
+.channel-dropdown:hover {
     border-color: var(--border-hover);
-    color: var(--text);
 }
 
-.channel-tab.active {
-    background: var(--accent-dim);
+.channel-dropdown:focus {
+    outline: none;
     border-color: var(--accent);
-    color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-dim);
 }
 
-.channel-tab .badge {
-    background: var(--accent);
-    color: var(--bg);
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0.1rem 0.4rem;
-    border-radius: 10px;
-}
-
-.channel-tab .hot {
-    color: var(--warning);
+.channel-dropdown option {
+    background: var(--bg-card);
+    color: var(--text);
+    padding: 0.5rem;
 }
 
 /* ============================================
@@ -1175,13 +1152,9 @@ pre code {
         font-size: 1.25rem;
     }
 
-    .channel-tabs {
-        gap: 0.35rem;
-    }
-
-    .channel-tab {
-        padding: 0.4rem 0.75rem;
-        font-size: 0.8rem;
+    .channel-dropdown {
+        font-size: 0.9rem;
+        padding: 0.6rem 0.85rem;
     }
 
     .message-card {
