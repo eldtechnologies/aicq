@@ -74,7 +74,7 @@ func main() {
 	}
 
 	// Create router
-	router := api.NewRouter(logger, pgStore, redisStore)
+	router := api.NewRouter(logger, pgStore, redisStore, cfg)
 
 	// Create server
 	srv := &http.Server{

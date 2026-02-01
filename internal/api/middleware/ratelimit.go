@@ -20,20 +20,31 @@ type RateLimit struct {
 	KeyFunc  func(r *http.Request) string
 }
 
+// RateLimiterConfig holds configuration for the rate limiter.
+type RateLimiterConfig struct {
+	Whitelist        []string // IPs or CIDRs exempt from rate limiting
+	AutoBlockEnabled bool     // Enable auto-blocking after repeated violations
+}
+
 // RateLimiter implements sliding window rate limiting.
 type RateLimiter struct {
-	client  *redis.Client
-	limits  map[string]RateLimit
-	blocker *IPBlocker
-	logger  zerolog.Logger
+	client           *redis.Client
+	limits           map[string]RateLimit
+	blocker          *IPBlocker
+	logger           zerolog.Logger
+	whitelist        []*net.IPNet
+	whitelistIPs     map[string]bool
+	autoBlockEnabled bool
 }
 
 // NewRateLimiter creates a new rate limiter.
-func NewRateLimiter(client *redis.Client, logger zerolog.Logger) *RateLimiter {
+func NewRateLimiter(client *redis.Client, logger zerolog.Logger, cfg RateLimiterConfig) *RateLimiter {
 	rl := &RateLimiter{
-		client:  client,
-		blocker: NewIPBlocker(client),
-		logger:  logger,
+		client:           client,
+		blocker:          NewIPBlocker(client),
+		logger:           logger,
+		whitelistIPs:     make(map[string]bool),
+		autoBlockEnabled: cfg.AutoBlockEnabled,
 		limits: map[string]RateLimit{
 			"POST /register": {10, time.Hour, ipKey},
 			"GET /who/":      {100, time.Minute, ipKey},
@@ -46,7 +57,51 @@ func NewRateLimiter(client *redis.Client, logger zerolog.Logger) *RateLimiter {
 			"GET /find":      {30, time.Minute, ipKey},
 		},
 	}
+
+	// Parse whitelist entries
+	for _, entry := range cfg.Whitelist {
+		if strings.Contains(entry, "/") {
+			// CIDR notation
+			_, ipNet, err := net.ParseCIDR(entry)
+			if err != nil {
+				logger.Warn().Str("entry", entry).Err(err).Msg("invalid CIDR in whitelist")
+				continue
+			}
+			rl.whitelist = append(rl.whitelist, ipNet)
+		} else {
+			// Single IP
+			rl.whitelistIPs[entry] = true
+		}
+	}
+
+	if len(cfg.Whitelist) > 0 {
+		logger.Info().
+			Int("ips", len(rl.whitelistIPs)).
+			Int("cidrs", len(rl.whitelist)).
+			Msg("rate limit whitelist configured")
+	}
+
 	return rl
+}
+
+// isWhitelisted checks if an IP is in the whitelist.
+func (rl *RateLimiter) isWhitelisted(ipStr string) bool {
+	// Check exact IP match
+	if rl.whitelistIPs[ipStr] {
+		return true
+	}
+
+	// Check CIDR ranges
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	for _, ipNet := range rl.whitelist {
+		if ipNet.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // ipKey returns rate limit key based on client IP.
@@ -137,8 +192,15 @@ func (rl *RateLimiter) CheckAndIncrement(ctx context.Context, key string, limit 
 // Middleware returns the rate limiting middleware.
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check IP block first
 		ip := RealIP(r)
+
+		// Skip rate limiting for whitelisted IPs
+		if rl.isWhitelisted(ip) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Check IP block first
 		if rl.blocker.IsBlocked(r.Context(), ip) {
 			rl.logger.Warn().
 				Str("type", "security").
@@ -205,6 +267,10 @@ func (rl *RateLimiter) findLimit(r *http.Request) *RateLimit {
 
 // trackViolation tracks rate limit violations and auto-blocks repeat offenders.
 func (rl *RateLimiter) trackViolation(ctx context.Context, ip string) {
+	if !rl.autoBlockEnabled {
+		return
+	}
+
 	key := fmt.Sprintf("violations:ip:%s", ip)
 	count, _ := rl.client.Incr(ctx, key).Result()
 	rl.client.Expire(ctx, key, time.Hour)

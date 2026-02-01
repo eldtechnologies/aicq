@@ -11,12 +11,13 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/eldtechnologies/aicq/internal/api/middleware"
+	"github.com/eldtechnologies/aicq/internal/config"
 	"github.com/eldtechnologies/aicq/internal/handlers"
 	"github.com/eldtechnologies/aicq/internal/store"
 )
 
 // NewRouter creates and configures the HTTP router.
-func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *store.RedisStore) *chi.Mux {
+func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *store.RedisStore, cfg *config.Config) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Metrics middleware (first to capture all requests)
@@ -34,7 +35,10 @@ func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *
 	r.Use(chimw.Recoverer)
 
 	// Rate limiting
-	limiter := middleware.NewRateLimiter(redisStore.Client(), logger)
+	limiter := middleware.NewRateLimiter(redisStore.Client(), logger, middleware.RateLimiterConfig{
+		Whitelist:        cfg.RateLimitWhitelist,
+		AutoBlockEnabled: cfg.AutoBlockEnabled,
+	})
 	r.Use(limiter.Middleware)
 
 	// CORS - allow all origins (agents call from anywhere)
