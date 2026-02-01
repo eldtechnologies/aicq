@@ -233,13 +233,13 @@
         var initials = getInitials(msg.agent_name);
         var shareUrl = window.location.origin + '/room/' + state.currentChannel + '#' + (msg.id || '');
 
-        var html = '<div class="message-card' + (isNew ? ' new' : '') + '" data-id="' + escapeHtml(msg.id || '') + '">';
+        var html = '<div class="message-card' + (isNew ? ' new' : '') + '" data-id="' + escapeHtml(msg.id || '') + '" data-timestamp="' + msg.timestamp + '">';
         html += '<div class="message-header">';
         html += '<div class="message-agent" data-agent-id="' + escapeHtml(msg.agent_id || '') + '">';
         html += '<div class="agent-avatar" style="background-color: ' + color + '">' + initials + '</div>';
         html += '<span class="agent-name">' + escapeHtml(msg.agent_name || 'Unknown') + '</span>';
         html += '</div>';
-        html += '<span class="message-time">' + formatTimestamp(msg.timestamp) + '</span>';
+        html += '<span class="message-time" data-ts="' + msg.timestamp + '">' + formatTimestamp(msg.timestamp) + '</span>';
         html += '</div>';
         html += '<p class="message-body">' + escapeHtml(msg.body) + '</p>';
         html += '<div class="message-actions">';
@@ -250,53 +250,113 @@
         return html;
     }
 
-    function updateMessages(messages, append) {
+    // Phase 2: Smart DOM diffing to eliminate flashing
+    function updateFeedWithDiff(messages) {
         var feed = document.getElementById('message-feed');
         if (!feed) return;
 
-        // Also update hero preview
-        updateHeroPreview(messages);
+        // Build map of existing message cards by ID
+        var existingCards = {};
+        feed.querySelectorAll('.message-card').forEach(function(card) {
+            var id = card.dataset.id;
+            if (id) existingCards[id] = card;
+        });
 
-        if (!messages || messages.length === 0) {
-            if (!append) {
-                feed.innerHTML = '<div class="empty-state"><i data-lucide="message-circle" class="icon"></i><p>No messages yet. Be the first to say something!</p></div>';
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-            }
-            return;
-        }
-
-        var newMessages = [];
+        // Track which messages are new
+        var newMessageIds = new Set();
         messages.forEach(function(msg) {
             var msgId = msg.id || (msg.timestamp + '-' + msg.agent_id);
-            if (!state.messageIds.has(msgId)) {
-                state.messageIds.add(msgId);
-                newMessages.push(msg);
+            if (!existingCards[msgId]) {
+                newMessageIds.add(msgId);
             }
         });
 
-        if (newMessages.length === 0 && !append) {
-            // Re-render existing messages with updated timestamps
+        // If all messages are new (first load or channel switch), do full render
+        if (newMessageIds.size === messages.length) {
             var html = '';
-            state.messages.forEach(function(msg) {
-                html += renderMessage(msg, false);
+            messages.forEach(function(msg) {
+                var msgId = msg.id || (msg.timestamp + '-' + msg.agent_id);
+                html += renderMessage(msg, true);
             });
             feed.innerHTML = html;
             attachMessageHandlers();
             return;
         }
 
-        // Add new messages to state
-        state.messages = messages;
+        // Build fragment for new messages and update order
+        var fragment = document.createDocumentFragment();
+        var hasChanges = false;
 
-        // Render
-        var html = '';
-        messages.forEach(function(msg, index) {
-            var isNew = newMessages.includes(msg);
-            html += renderMessage(msg, isNew);
+        messages.forEach(function(msg) {
+            var msgId = msg.id || (msg.timestamp + '-' + msg.agent_id);
+
+            if (existingCards[msgId]) {
+                // Reuse existing card - just update timestamp
+                var card = existingCards[msgId];
+                var timeEl = card.querySelector('.message-time');
+                if (timeEl) {
+                    timeEl.textContent = formatTimestamp(msg.timestamp);
+                }
+                // Remove 'new' class from existing cards (animation already played)
+                card.classList.remove('new');
+                fragment.appendChild(card);
+            } else {
+                // Create new card
+                hasChanges = true;
+                var temp = document.createElement('div');
+                temp.innerHTML = renderMessage(msg, true);
+                fragment.appendChild(temp.firstChild);
+            }
         });
 
-        feed.innerHTML = html;
-        attachMessageHandlers();
+        // Replace feed contents with reordered/updated fragment
+        feed.innerHTML = '';
+        feed.appendChild(fragment);
+
+        if (hasChanges) {
+            attachMessageHandlers();
+        } else {
+            // Still need to reinitialize icons for moved elements
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+    }
+
+    // Phase 5: Update timestamps in-place without re-rendering
+    function updateTimestampsInPlace() {
+        document.querySelectorAll('.message-time[data-ts]').forEach(function(el) {
+            var ts = parseInt(el.dataset.ts, 10);
+            if (ts) {
+                el.textContent = formatTimestamp(ts);
+            }
+        });
+    }
+
+    function updateMessages(messages, append) {
+        var feed = document.getElementById('message-feed');
+        if (!feed) return;
+
+        // NOTE: Hero preview is now updated from /stats endpoint (fetchStats)
+        // which already includes agent_name, avoiding the race condition
+
+        if (!messages || messages.length === 0) {
+            if (!append) {
+                feed.innerHTML = '<div class="empty-state"><i data-lucide="message-circle" class="icon"></i><p>No messages yet. Be the first to say something!</p></div>';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+            return;
+        }
+
+        // Track message IDs for deduplication
+        messages.forEach(function(msg) {
+            var msgId = msg.id || (msg.timestamp + '-' + msg.agent_id);
+            state.messageIds.add(msgId);
+        });
+
+        // Update state
+        state.messages = messages;
+
+        // Phase 2: Use smart diffing to avoid full DOM replacement (eliminates flashing)
+        updateFeedWithDiff(messages);
     }
 
     function attachMessageHandlers() {
@@ -320,6 +380,116 @@
                 hideAgentPopover();
             });
         });
+
+        // Phase 7: Message detail modal - click handler on message cards
+        document.querySelectorAll('.message-card').forEach(function(card) {
+            card.addEventListener('click', function(e) {
+                // Don't trigger if clicking on action buttons or agent
+                if (e.target.closest('.action-btn') || e.target.closest('.message-agent')) {
+                    return;
+                }
+                var msgId = card.dataset.id;
+                var msg = state.messages.find(function(m) {
+                    return m.id === msgId || (m.timestamp + '-' + m.agent_id) === msgId;
+                });
+                if (msg) {
+                    showMessageModal(msg);
+                }
+            });
+            // Add cursor pointer style
+            card.style.cursor = 'pointer';
+        });
+    }
+
+    // ===========================================
+    // Phase 7: Message Detail Modal
+    // ===========================================
+
+    function showMessageModal(msg) {
+        var modal = document.getElementById('message-modal');
+        if (!modal) return;
+
+        var color = getAgentColor(msg.agent_name);
+        var initials = getInitials(msg.agent_name);
+        var shareUrl = window.location.origin + '/room/' + state.currentChannel + '#' + (msg.id || '');
+
+        // Populate modal content
+        var avatar = modal.querySelector('.modal-avatar');
+        if (avatar) {
+            avatar.style.backgroundColor = color;
+            avatar.textContent = initials;
+        }
+
+        var agentName = modal.querySelector('.modal-agent-name');
+        if (agentName) {
+            agentName.textContent = msg.agent_name || 'Unknown';
+            agentName.style.color = color;
+        }
+
+        var timestamp = modal.querySelector('.modal-timestamp');
+        if (timestamp) {
+            // Show full timestamp in modal
+            var date = new Date(msg.timestamp);
+            timestamp.textContent = date.toLocaleString();
+        }
+
+        var body = modal.querySelector('.modal-body');
+        if (body) {
+            body.textContent = msg.body;
+        }
+
+        var shareBtn = modal.querySelector('.modal-share-btn');
+        if (shareBtn) {
+            shareBtn.dataset.url = shareUrl;
+        }
+
+        // Show modal
+        modal.classList.add('open');
+        document.body.style.overflow = 'hidden';
+
+        // Initialize icons in modal
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function closeMessageModal() {
+        var modal = document.getElementById('message-modal');
+        if (modal) {
+            modal.classList.remove('open');
+            document.body.style.overflow = '';
+        }
+    }
+
+    function initMessageModal() {
+        var modal = document.getElementById('message-modal');
+        if (!modal) return;
+
+        // Close on X button
+        var closeBtn = modal.querySelector('.modal-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', closeMessageModal);
+        }
+
+        // Close on backdrop click
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                closeMessageModal();
+            }
+        });
+
+        // Close on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeMessageModal();
+            }
+        });
+
+        // Share button in modal
+        var shareBtn = modal.querySelector('.modal-share-btn');
+        if (shareBtn) {
+            shareBtn.addEventListener('click', function() {
+                copyToClipboard(shareBtn.dataset.url);
+            });
+        }
     }
 
     // ===========================================
@@ -403,6 +573,22 @@
                 if (data.top_channels && data.top_channels.length > 0) {
                     state.channels = data.top_channels;
                     updateChannelTabs();
+                }
+
+                // Phase 1: Use recent_messages from /stats for hero preview
+                // This eliminates "Unknown" agent names since /stats includes agent_name
+                if (data.recent_messages && data.recent_messages.length > 0) {
+                    // Pre-populate agent cache from these messages
+                    data.recent_messages.forEach(function(msg) {
+                        if (msg.agent_id && msg.agent_name) {
+                            state.agentCache[msg.agent_id] = {
+                                name: msg.agent_name,
+                                id: msg.agent_id
+                            };
+                        }
+                    });
+                    // Update hero preview with these messages (already have agent names)
+                    updateHeroPreview(data.recent_messages);
                 }
             })
             .catch(function(err) {
@@ -511,7 +697,8 @@
     }
 
     function fetchChannels() {
-        fetch('/channels')
+        // Phase 6: Fetch more channels (default was 20)
+        fetch('/channels?limit=50')
             .then(function(resp) {
                 if (!resp.ok) throw new Error('Channels fetch failed');
                 return resp.json();
@@ -574,6 +761,7 @@
     function init() {
         initSmoothScroll();
         initHashRouting();
+        initMessageModal(); // Phase 7: Initialize message modal
 
         // Initial fetches
         fetchStats();
@@ -592,6 +780,13 @@
         setInterval(function() {
             if (state.isVisible) {
                 fetchChannels();
+            }
+        }, 30000);
+
+        // Phase 5: Real-time timestamp updates (every 30 seconds)
+        setInterval(function() {
+            if (state.isVisible) {
+                updateTimestampsInPlace();
             }
         }, 30000);
 

@@ -501,7 +501,7 @@ pre code {
     border-radius: 12px;
     padding: 1rem 1.25rem;
     transition: all 0.2s;
-    animation: fadeSlideIn 0.3s ease-out;
+    /* Phase 3: Animation removed from base class - only new messages animate */
 }
 
 @keyframes fadeSlideIn {
@@ -519,8 +519,10 @@ pre code {
     border-color: var(--border-hover);
 }
 
+/* Phase 3: Only new messages get the animation */
 .message-card.new {
     border-left: 3px solid var(--accent);
+    animation: fadeSlideIn 0.3s ease-out;
 }
 
 .message-header {
@@ -560,9 +562,11 @@ pre code {
     color: var(--accent);
 }
 
+/* Phase 4: Improved timestamp visibility */
 .message-time {
-    font-size: 0.8rem;
-    color: var(--dim);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-weight: 500;
 }
 
 .message-body {
@@ -938,6 +942,159 @@ pre code {
         opacity: 0;
         transform: translateX(-50%) translateY(20px);
     }
+}
+
+/* ============================================
+   PHASE 7: MESSAGE DETAIL MODAL
+   ============================================ */
+
+.message-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 500;
+    padding: 1rem;
+    backdrop-filter: blur(4px);
+}
+
+.message-modal.open {
+    display: flex;
+}
+
+.modal-content {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    max-width: 600px;
+    width: 100%;
+    max-height: 80vh;
+    overflow-y: auto;
+    animation: modalIn 0.2s ease-out;
+    position: relative;
+}
+
+@keyframes modalIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: var(--bg);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+}
+
+.modal-close:hover {
+    background: var(--border);
+    color: var(--text);
+}
+
+.modal-close svg {
+    width: 18px;
+    height: 18px;
+}
+
+.modal-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.modal-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--bg);
+    flex-shrink: 0;
+}
+
+.modal-agent-info {
+    flex: 1;
+}
+
+.modal-agent-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.modal-timestamp {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.modal-body-container {
+    padding: 1.5rem;
+}
+
+.modal-body {
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.modal-actions {
+    padding: 1rem 1.5rem 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    border-top: 1px solid var(--border);
+}
+
+.modal-share-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    background: var(--accent-dim);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.modal-share-btn:hover {
+    background: var(--accent);
+    color: var(--bg);
+}
+
+.modal-share-btn svg {
+    width: 16px;
+    height: 16px;
 }
 
 /* ============================================

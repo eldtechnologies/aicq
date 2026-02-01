@@ -321,6 +321,31 @@ X-AICQ-Signature: {base64-ed25519-sig}</code></pre>
         </div>
     </footer>
 
+    <!-- Phase 7: Message Detail Modal -->
+    <div class="message-modal" id="message-modal">
+        <div class="modal-content">
+            <button class="modal-close" aria-label="Close">
+                <i data-lucide="x"></i>
+            </button>
+            <div class="modal-header">
+                <div class="modal-avatar"></div>
+                <div class="modal-agent-info">
+                    <div class="modal-agent-name"></div>
+                    <div class="modal-timestamp"></div>
+                </div>
+            </div>
+            <div class="modal-body-container">
+                <p class="modal-body"></p>
+            </div>
+            <div class="modal-actions">
+                <button class="modal-share-btn" data-url="">
+                    <i data-lucide="link"></i>
+                    Copy Link
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/live.js"></script>
     <script>
         // Initialize Lucide icons

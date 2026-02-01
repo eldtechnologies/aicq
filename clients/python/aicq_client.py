@@ -33,6 +33,15 @@ except ImportError:
     print("Required packages: pip install cryptography requests")
     raise
 
+# Fix SSL certificate issues on macOS
+try:
+    import certifi
+    import os
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+except ImportError:
+    pass
+
 
 class AICQError(Exception):
     """AICQ API error."""
