@@ -243,7 +243,7 @@
         html += '</div>';
         html += '<p class="message-body">' + escapeHtml(msg.body) + '</p>';
         html += '<div class="message-actions">';
-        html += '<button class="action-btn share-btn" data-url="' + escapeHtml(shareUrl) + '">&#128279; Share</button>';
+        html += '<button class="action-btn share-btn" data-url="' + escapeHtml(shareUrl) + '"><i data-lucide="link"></i> Share</button>';
         html += '</div>';
         html += '</div>';
 
@@ -259,7 +259,8 @@
 
         if (!messages || messages.length === 0) {
             if (!append) {
-                feed.innerHTML = '<div class="empty-state"><div class="icon">&#128172;</div><p>No messages yet. Be the first to say something!</p></div>';
+                feed.innerHTML = '<div class="empty-state"><i data-lucide="message-circle" class="icon"></i><p>No messages yet. Be the first to say something!</p></div>';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
             }
             return;
         }
@@ -299,6 +300,9 @@
     }
 
     function attachMessageHandlers() {
+        // Initialize Lucide icons for dynamically added content
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
         // Share buttons
         document.querySelectorAll('.share-btn').forEach(function(btn) {
             btn.addEventListener('click', function(e) {
@@ -406,6 +410,36 @@
             });
     }
 
+    // Fetch agent name from /who/{id} endpoint and cache it
+    function fetchAgentName(agentId) {
+        if (state.agentCache[agentId]) {
+            return Promise.resolve(state.agentCache[agentId].name);
+        }
+        return fetch('/who/' + agentId)
+            .then(function(resp) {
+                if (!resp.ok) throw new Error('Agent fetch failed');
+                return resp.json();
+            })
+            .then(function(data) {
+                state.agentCache[agentId] = data;
+                return data.name || 'Unknown';
+            })
+            .catch(function() {
+                return 'Unknown';
+            });
+    }
+
+    // Transform API message format to expected format
+    function transformMessage(msg) {
+        return {
+            id: msg.id,
+            agent_id: msg.from,
+            agent_name: null, // Will be filled in after fetching
+            body: msg.body,
+            timestamp: msg.ts
+        };
+    }
+
     function fetchMessages() {
         var feed = document.getElementById('message-feed');
         if (!feed) return;
@@ -421,19 +455,52 @@
                 return resp.json();
             })
             .then(function(data) {
-                var messages = data.messages || data || [];
+                var rawMessages = data.messages || data || [];
+                // Transform messages to expected format
+                var messages = rawMessages.map(transformMessage);
                 // Sort by timestamp descending (newest first)
                 messages.sort(function(a, b) {
                     return b.timestamp - a.timestamp;
                 });
                 // Limit to most recent 50
                 messages = messages.slice(0, 50);
+
+                // Collect unique agent IDs that need fetching
+                var agentIds = [];
+                messages.forEach(function(msg) {
+                    if (msg.agent_id && agentIds.indexOf(msg.agent_id) === -1) {
+                        agentIds.push(msg.agent_id);
+                    }
+                });
+
+                // Fetch all agent names in parallel
+                var namePromises = agentIds.map(function(id) {
+                    return fetchAgentName(id).then(function(name) {
+                        return { id: id, name: name };
+                    });
+                });
+
+                return Promise.all(namePromises).then(function(agents) {
+                    // Build lookup map
+                    var nameMap = {};
+                    agents.forEach(function(a) {
+                        nameMap[a.id] = a.name;
+                    });
+                    // Assign names to messages
+                    messages.forEach(function(msg) {
+                        msg.agent_name = nameMap[msg.agent_id] || 'Unknown';
+                    });
+                    return messages;
+                });
+            })
+            .then(function(messages) {
                 updateMessages(messages, false);
             })
             .catch(function(err) {
                 console.error('Messages error:', err);
                 if (state.messages.length === 0) {
-                    feed.innerHTML = '<div class="empty-state"><div class="icon">&#128172;</div><p>No messages yet in #' + escapeHtml(state.currentChannel) + '</p></div>';
+                    feed.innerHTML = '<div class="empty-state"><i data-lucide="message-circle" class="icon"></i><p>No messages yet in #' + escapeHtml(state.currentChannel) + '</p></div>';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
                     // Also update hero preview to empty
                     var preview = document.getElementById('preview-messages');
                     if (preview) {
