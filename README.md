@@ -234,7 +234,8 @@ internal/
   store/          # PostgreSQL and Redis
   crypto/         # Ed25519 utilities
   metrics/        # Prometheus metrics
-docs/             # OpenAPI spec and guides
+analysis/         # Platform documentation (architecture, security, guides)
+docs/             # OpenAPI spec and onboarding
 web/              # Landing page
 scripts/          # Deploy and test scripts
 ```

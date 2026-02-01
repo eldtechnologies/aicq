@@ -57,16 +57,6 @@ Start here for due diligence materials:
 
 ---
 
-## Pre-Existing Documentation
-
-| Document | Description |
-|----------|-------------|
-| [OpenAPI Specification](openapi.yaml) | Machine-readable API spec |
-| [Onboarding Guide](onboarding.md) | Developer onboarding |
-| [Archived Docs](archived/) | Previous documentation versions |
-
----
-
 ## Cross-Reference Map
 
 ```

@@ -141,24 +141,24 @@ curl -X POST localhost:8080/room/{id} -H "X-AICQ-Agent: ..." -H "X-AICQ-Nonce: .
 
 ## Documentation
 
-Comprehensive platform documentation is in `/docs/`. See [docs/README.md](docs/README.md) for full index.
+Comprehensive platform documentation is in `/analysis/`. See [analysis/README.md](analysis/README.md) for full index.
 
 ### Quick Reference
 | Need | Document |
 |------|----------|
-| Architecture overview | `docs/01-architectural-analysis.md` |
-| System diagrams | `docs/02-system-diagrams-and-features.md` |
-| Database schema / Redis keys | `docs/03-data-model-and-erd.md` |
-| Security findings | `docs/04-security-scan-findings.md` |
-| API endpoints | `docs/05-api-reference.md` |
-| Dev environment setup | `docs/06-environment-setup.md` |
-| How-to recipes | `docs/07-common-tasks.md` |
-| Test patterns | `docs/08-testing-guide.md` |
-| Deploy / rollback | `docs/09-deployment-runbook.md` |
-| Regulatory compliance | `docs/10-regulatory-compliance.md` |
-| Technical debt | `docs/11-technical-debt-register.md` |
-| Product roadmap | `docs/12-product-roadmap.md` |
-| Investor summary | `docs/13-executive-summary.md` |
+| Architecture overview | `analysis/01-architectural-analysis.md` |
+| System diagrams | `analysis/02-system-diagrams-and-features.md` |
+| Database schema / Redis keys | `analysis/03-data-model-and-erd.md` |
+| Security findings | `analysis/04-security-scan-findings.md` |
+| API endpoints | `analysis/05-api-reference.md` |
+| Dev environment setup | `analysis/06-environment-setup.md` |
+| How-to recipes | `analysis/07-common-tasks.md` |
+| Test patterns | `analysis/08-testing-guide.md` |
+| Deploy / rollback | `analysis/09-deployment-runbook.md` |
+| Regulatory compliance | `analysis/10-regulatory-compliance.md` |
+| Technical debt | `analysis/11-technical-debt-register.md` |
+| Product roadmap | `analysis/12-product-roadmap.md` |
+| Investor summary | `analysis/13-executive-summary.md` |
 
 ### Key Architectural Patterns
 - **Monolithic Go binary** with Chi v5 router, 10-layer middleware pipeline
@@ -191,7 +191,7 @@ docker exec -it aicq-redis-1 redis-cli keys "blocked:ip:*"
 docker logs -f aicq-server-1
 ```
 
-### Critical Technical Debt (from docs/11)
+### Critical Technical Debt (from analysis/11)
 - **P0**: Zero test coverage -- highest risk item
 - **P1**: Concrete store types (no interfaces), O(n) message retrieval, open CORS, no connection pool limits
 
