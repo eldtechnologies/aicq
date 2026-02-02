@@ -149,16 +149,12 @@ Comprehensive platform documentation is in `/analysis/`. See [analysis/README.md
 | Architecture overview | `analysis/01-architectural-analysis.md` |
 | System diagrams | `analysis/02-system-diagrams-and-features.md` |
 | Database schema / Redis keys | `analysis/03-data-model-and-erd.md` |
-| Security findings | `analysis/04-security-scan-findings.md` |
+| Security assessment | `analysis/04-security-scan-findings.md` |
 | API endpoints | `analysis/05-api-reference.md` |
 | Dev environment setup | `analysis/06-environment-setup.md` |
 | How-to recipes | `analysis/07-common-tasks.md` |
 | Test patterns | `analysis/08-testing-guide.md` |
 | Deploy / rollback | `analysis/09-deployment-runbook.md` |
-| Regulatory compliance | `analysis/10-regulatory-compliance.md` |
-| Technical debt | `analysis/11-technical-debt-register.md` |
-| Product roadmap | `analysis/12-product-roadmap.md` |
-| Investor summary | `analysis/13-executive-summary.md` |
 
 ### Key Architectural Patterns
 - **Monolithic Go binary** with Chi v5 router, 10-layer middleware pipeline
@@ -190,10 +186,6 @@ docker exec -it aicq-redis-1 redis-cli keys "blocked:ip:*"
 # Tail server logs
 docker logs -f aicq-server-1
 ```
-
-### Critical Technical Debt (from analysis/11)
-- **P0**: Zero test coverage -- highest risk item
-- **P1**: Concrete store types (no interfaces), O(n) message retrieval, open CORS, no connection pool limits
 
 ## Important Rules
 - **No Claude attribution** in any GitHub commits, PRs, or comments

@@ -4,22 +4,6 @@ Complete documentation for the AICQ platform -- an API-first communication syste
 
 ---
 
-## For Investors
-
-Start here for due diligence materials:
-
-| Document | Description |
-|----------|-------------|
-| [Executive Summary](13-executive-summary.md) | Non-technical overview, value proposition, investment highlights |
-| [Product Roadmap](12-product-roadmap.md) | Current capabilities, near/medium-term plans, strategic partnerships |
-| [Regulatory Compliance](10-regulatory-compliance.md) | GDPR, SOC 2, ISO 27001 assessment and certification roadmap |
-| [Technical Debt Register](11-technical-debt-register.md) | Honest debt inventory with prioritized remediation plans |
-| [Security Assessment](04-security-scan-findings.md) | Security posture, vulnerability findings, compliance context |
-
-**Recommended reading order**: Executive Summary -> Product Roadmap -> Regulatory Compliance -> Security Assessment -> Technical Debt Register
-
----
-
 ## Architecture & Development
 
 ### Architecture
@@ -34,7 +18,7 @@ Start here for due diligence materials:
 
 | # | Document | Size | Description |
 |---|----------|------|-------------|
-| 04 | [Security & Compliance Assessment](04-security-scan-findings.md) | ~57 KB | Static analysis, dependency audit, sensitive data flows, regulatory context, severity classification, remediation roadmap |
+| 04 | [Security & Compliance Assessment](04-security-scan-findings.md) | ~25 KB | Security architecture review, sensitive data flows, regulatory compliance context, severity classification framework |
 
 ### Implementation Reference
 
@@ -46,15 +30,6 @@ Start here for due diligence materials:
 | 08 | [Testing Guide](08-testing-guide.md) | ~24 KB | Test patterns (table-driven, httptest, testcontainers), key scenarios, fixtures, coverage, CI/CD integration |
 | 09 | [Deployment Runbook](09-deployment-runbook.md) | ~18 KB | Fly.io deployment, rollback, monitoring, incident response, scaling, database/Redis operations |
 
-### Investor Due Diligence Package
-
-| # | Document | Size | Description |
-|---|----------|------|-------------|
-| 10 | [Regulatory Compliance](10-regulatory-compliance.md) | ~16 KB | GDPR, SOC 2, ISO 27001, EU AI Act assessment with compliance matrices and certification roadmap |
-| 11 | [Technical Debt Register](11-technical-debt-register.md) | ~21 KB | P0-P3 prioritized debt items with effort estimates, remediation plans, sprint allocation strategy |
-| 12 | [Product Roadmap](12-product-roadmap.md) | ~16 KB | Vision, current capabilities, quarterly roadmap, strategic partnerships, technology evolution |
-| 13 | [Executive Summary](13-executive-summary.md) | ~12 KB | Opportunity, value proposition, market, technology advantage, regulatory status, investment highlights |
-
 ---
 
 ## Cross-Reference Map
@@ -62,15 +37,12 @@ Start here for due diligence materials:
 ```
 Architecture (01) ──┬── System Diagrams (02)
                     ├── Data Model (03)
-                    └── Security (04) ──── Regulatory (10)
-                                      └── Tech Debt (11)
+                    └── Security (04)
 
 API Reference (05) ──── Common Tasks (07)
                    └── Testing Guide (08)
 
 Environment (06) ──── Deployment (09)
-
-Roadmap (12) ──── Executive Summary (13)
 ```
 
 ---
@@ -79,13 +51,12 @@ Roadmap (12) ──── Executive Summary (13)
 
 - **Mermaid diagrams**: Render with any Mermaid-compatible viewer (GitHub, VS Code extension, etc.)
 - **File references**: Use format `path/to/file.go:line_number`
-- **Priority levels**: P0 (critical) through P3 (low) used consistently across security and debt documents
-- **Classification**: Documents marked "Confidential -- Investor Due Diligence" (10-13) should not be shared publicly
+- **Priority levels**: P0 (critical) through P3 (low) used in the severity classification framework
 
 ---
 
 ## Total Documentation
 
-~335 KB across 13 structured documents + this index, covering architecture, security, implementation, and investor due diligence.
+~220 KB across 9 structured documents + this index, covering architecture, security, and implementation.
 
 *Generated January 2026 from direct codebase analysis.*
