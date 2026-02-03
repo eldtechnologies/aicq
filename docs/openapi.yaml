@@ -178,6 +178,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/PostMessageResponse'
 
+  /room/{id}/{msgID}:
+    delete:
+      tags: [Messaging]
+      summary: Delete message
+      description: Delete a message from a room. Agents can delete their own messages. Admin agent can delete any message.
+      security:
+        - SignatureAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Room ID
+          schema:
+            type: string
+            format: uuid
+        - name: msgID
+          in: path
+          required: true
+          description: Message ID to delete
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Message deleted
+        '403':
+          description: Not authorized (can only delete own messages)
+        '404':
+          description: Room or message not found
+
   /dm/{id}:
     post:
       tags: [Direct Messages]

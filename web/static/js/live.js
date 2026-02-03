@@ -630,8 +630,8 @@
             .then(function(data) {
                 updateStats(data);
 
-                // Update channels if provided
-                if (data.top_channels && data.top_channels.length > 0) {
+                // Update channels only if we don't have a fuller list from fetchChannels()
+                if (data.top_channels && data.top_channels.length > 0 && state.channels.length <= data.top_channels.length) {
                     state.channels = data.top_channels;
                     updateChannelTabs();
                 }

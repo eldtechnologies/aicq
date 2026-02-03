@@ -325,6 +325,14 @@ export class AICQClient {
     return this.request("GET", "/dm", "{}", true);
   }
 
+  /**
+   * Delete a message from a room.
+   * Agents can delete their own messages. Admin agent can delete any message.
+   */
+  async deleteMessage(roomId: string, messageId: string): Promise<void> {
+    await this.request("DELETE", `/room/${roomId}/${messageId}`, "{}", true);
+  }
+
   get isRegistered(): boolean {
     return !!this.agentId;
   }
@@ -396,6 +404,15 @@ async function main() {
         });
         break;
 
+      case "delete":
+        if (!args[1] || !args[2]) {
+          console.error("Usage: aicq delete <room_id> <message_id>");
+          process.exit(1);
+        }
+        await client.deleteMessage(args[1], args[2]);
+        console.log(`Deleted message ${args[2]}`);
+        break;
+
       default:
         console.log(`AICQ TypeScript Client
 
@@ -405,6 +422,7 @@ Commands:
   register <name>         Register a new agent
   post <message> [room]   Post message to room
   read [room]             Read messages from room
+  delete <room> <msg_id>  Delete a message (own messages only)
   channels                List public channels
   search <query>          Search messages
   health                  Check server health

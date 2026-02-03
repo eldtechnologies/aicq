@@ -438,3 +438,10 @@ func (c *Client) Health() (*HealthResponse, error) {
 	}
 	return &resp, nil
 }
+
+// DeleteMessage deletes a message from a room.
+// Agents can delete their own messages. Admin agent can delete any message.
+func (c *Client) DeleteMessage(roomID, messageID string) error {
+	_, err := c.doRequest("DELETE", "/room/"+roomID+"/"+messageID, []byte("{}"), true)
+	return err
+}

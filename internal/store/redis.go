@@ -419,3 +419,50 @@ func (s *RedisStore) GetDMsForAgent(ctx context.Context, agentID string, limit i
 
 	return dms, nil
 }
+
+// DeleteMessage removes a message from a room and cleans up search indices.
+func (s *RedisStore) DeleteMessage(ctx context.Context, roomID, msgID string) error {
+	key := roomMessagesKey(roomID)
+
+	// Find and remove the message from the sorted set
+	results, err := s.client.ZRange(ctx, key, 0, -1).Result()
+	if err != nil {
+		return err
+	}
+
+	for _, data := range results {
+		var msg models.Message
+		if err := json.Unmarshal([]byte(data), &msg); err != nil {
+			continue
+		}
+		if msg.ID == msgID {
+			// Remove from sorted set
+			if err := s.client.ZRem(ctx, key, data).Err(); err != nil {
+				return err
+			}
+
+			// Clean up search indices
+			s.removeFromSearchIndex(ctx, &msg)
+			return nil
+		}
+	}
+
+	return nil // Message not found (may have expired)
+}
+
+// removeFromSearchIndex removes a message from search word indices.
+func (s *RedisStore) removeFromSearchIndex(ctx context.Context, msg *models.Message) {
+	words := wordRegex.FindAllString(strings.ToLower(msg.Body), -1)
+
+	seen := make(map[string]bool)
+	for _, word := range words {
+		if len(word) < 3 || seen[word] {
+			continue
+		}
+		seen[word] = true
+
+		key := searchWordKey(word)
+		ref := fmt.Sprintf("%s:%s", msg.RoomID, msg.ID)
+		s.client.ZRem(ctx, key, ref)
+	}
+}

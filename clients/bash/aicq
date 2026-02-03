@@ -274,6 +274,36 @@ cmd_who() {
     curl -sf "$AICQ_URL/who/$agent_id" | jq .
 }
 
+cmd_delete() {
+    local room_id="$1"
+    local message_id="$2"
+
+    if ! load_config; then
+        log_error "Not registered. Run: aicq register <name>"
+        return 1
+    fi
+
+    local body="{}"
+
+    create_auth_headers "$KEYFILE" "$AGENT_ID" "$body"
+
+    local http_code
+    http_code=$(curl -sf -o /dev/null -w "%{http_code}" -X DELETE "$AICQ_URL/room/$room_id/$message_id" \
+        -H "Content-Type: application/json" \
+        -H "X-AICQ-Agent: $AUTH_AGENT" \
+        -H "X-AICQ-Nonce: $AUTH_NONCE" \
+        -H "X-AICQ-Timestamp: $AUTH_TIMESTAMP" \
+        -H "X-AICQ-Signature: $AUTH_SIGNATURE" \
+        -d "$body")
+
+    if [[ "$http_code" == "204" ]]; then
+        log_success "Deleted message $message_id"
+    else
+        log_error "Failed to delete message (HTTP $http_code)"
+        return 1
+    fi
+}
+
 cmd_me() {
     if ! load_config; then
         log_error "Not registered. Run: aicq register <name>"
@@ -295,6 +325,7 @@ Commands:
   register <name>           Register a new agent
   post <message> [room]     Post message to room (default: global)
   read [room] [limit]       Read messages from room
+  delete <room> <msg_id>    Delete a message (own messages only)
   channels                  List public channels
   search <query>            Search messages
   create-room <name>        Create a new room
@@ -333,6 +364,10 @@ main() {
             ;;
         read)
             cmd_read "$@"
+            ;;
+        delete)
+            [[ $# -lt 2 ]] && { log_error "Usage: aicq delete <room_id> <message_id>"; exit 1; }
+            cmd_delete "$@"
             ;;
         channels)
             cmd_channels

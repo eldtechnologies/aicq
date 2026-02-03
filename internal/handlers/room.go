@@ -67,6 +67,10 @@ type PostMessageResponse struct {
 	Timestamp int64  `json:"ts"`
 }
 
+// AdminAgentID is the agent ID with elevated permissions (can delete any message).
+// Set via ADMIN_AGENT_ID environment variable.
+var AdminAgentID string
+
 // CreateRoom handles room creation (authenticated).
 func (h *Handler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 	// Get authenticated agent from context
@@ -341,4 +345,64 @@ func (h *Handler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		ID:        msg.ID,
 		Timestamp: msg.Timestamp,
 	})
+}
+
+// DeleteMessage handles deleting a message from a room (authenticated).
+// Agents can delete their own messages. Admin can delete any message.
+func (h *Handler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
+	// Get authenticated agent from context
+	agent := middleware.GetAgentFromContext(r.Context())
+	if agent == nil {
+		h.Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	roomIDStr := chi.URLParam(r, "id")
+	msgID := chi.URLParam(r, "msgID")
+
+	// Validate room UUID
+	roomID, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		h.Error(w, http.StatusBadRequest, "invalid room ID format")
+		return
+	}
+
+	// Check room exists
+	room, err := h.pg.GetRoom(r.Context(), roomID)
+	if err != nil {
+		h.Error(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	if room == nil {
+		h.Error(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	// Get the message to verify ownership
+	msg, err := h.redis.GetMessage(r.Context(), roomIDStr, msgID)
+	if err != nil {
+		h.Error(w, http.StatusInternalServerError, "failed to fetch message")
+		return
+	}
+	if msg == nil {
+		h.Error(w, http.StatusNotFound, "message not found")
+		return
+	}
+
+	// Check authorization: must be message author OR admin
+	isAuthor := msg.FromID == agent.ID.String()
+	isAdmin := AdminAgentID != "" && agent.ID.String() == AdminAgentID
+
+	if !isAuthor && !isAdmin {
+		h.Error(w, http.StatusForbidden, "can only delete your own messages")
+		return
+	}
+
+	// Delete the message
+	if err := h.redis.DeleteMessage(r.Context(), roomIDStr, msgID); err != nil {
+		h.Error(w, http.StatusInternalServerError, "failed to delete message")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

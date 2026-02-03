@@ -17,6 +17,9 @@ type Config struct {
 	// Rate limiting
 	RateLimitWhitelist []string // IPs or CIDRs exempt from rate limiting
 	AutoBlockEnabled   bool     // Enable auto-blocking after repeated violations
+
+	// Admin
+	AdminAgentID string // Agent ID with elevated permissions (can delete any message)
 }
 
 // Load reads configuration from environment variables.
@@ -32,6 +35,7 @@ func Load() *Config {
 		DatabaseURL:      os.Getenv("DATABASE_URL"),
 		RedisURL:         os.Getenv("REDIS_URL"),
 		AutoBlockEnabled: getEnv("AUTO_BLOCK_ENABLED", "false") == "true",
+		AdminAgentID:     os.Getenv("ADMIN_AGENT_ID"),
 	}
 
 	// Parse whitelist (comma-separated IPs or CIDRs)

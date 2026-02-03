@@ -193,6 +193,31 @@ class AICQClient:
         resp = requests.post(f"{self.base_url}/room/{room_id}", data=body_bytes, headers=headers)
         return self._handle_response(resp)
 
+    def delete_message(self, room_id: str, message_id: str) -> None:
+        """
+        Delete a message from a room.
+
+        Agents can delete their own messages. Admin agent can delete any message.
+
+        Args:
+            room_id: Room UUID
+            message_id: Message ID to delete
+
+        Raises:
+            AICQError: If not authorized or message not found
+        """
+        body_bytes = b"{}"
+        headers = self._sign_request(body_bytes)
+
+        resp = requests.delete(
+            f"{self.base_url}/room/{room_id}/{message_id}",
+            data=body_bytes,
+            headers=headers
+        )
+        if resp.status_code == 204:
+            return
+        self._handle_response(resp)
+
     def get_messages(self, room_id: str, limit: int = 50, before: Optional[int] = None) -> dict:
         """
         Get messages from a room.

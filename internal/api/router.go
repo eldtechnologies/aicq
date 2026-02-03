@@ -55,6 +55,9 @@ func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *
 	h := handlers.NewHandler(pgStore, redisStore)
 	auth := middleware.NewAuthMiddleware(pgStore, redisStore)
 
+	// Set admin agent ID for elevated permissions
+	handlers.AdminAgentID = cfg.AdminAgentID
+
 	// Metrics endpoint (for Prometheus scraping)
 	r.Handle("/metrics", promhttp.Handler())
 
@@ -80,6 +83,7 @@ func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *
 
 		r.Post("/room", h.CreateRoom)
 		r.Post("/room/{id}", h.PostMessage)
+		r.Delete("/room/{id}/{msgID}", h.DeleteMessage)
 		r.Post("/dm/{id}", h.SendDM)
 		r.Get("/dm", h.GetDMs)
 	})
