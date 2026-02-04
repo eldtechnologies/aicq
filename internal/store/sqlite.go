@@ -342,12 +342,31 @@ func (s *SQLiteStore) SumMessageCount(ctx context.Context) (int64, error) {
 
 // GetMostRecentActivity returns the most recent activity timestamp across all rooms.
 func (s *SQLiteStore) GetMostRecentActivity(ctx context.Context) (*time.Time, error) {
-	var t *time.Time
-	err := s.db.QueryRowContext(ctx, `SELECT MAX(last_active_at) FROM rooms`).Scan(&t)
+	var timeStr *string
+	err := s.db.QueryRowContext(ctx, `SELECT MAX(last_active_at) FROM rooms`).Scan(&timeStr)
 	if err != nil {
 		return nil, err
 	}
-	return t, nil
+	if timeStr == nil {
+		return nil, nil
+	}
+	// SQLite stores timestamps in various formats; try common ones
+	formats := []string{
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02T15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05.999999999Z",
+		"2006-01-02 15:04:05",
+		time.RFC3339,
+		time.RFC3339Nano,
+	}
+	for _, format := range formats {
+		if t, err := time.Parse(format, *timeStr); err == nil {
+			return &t, nil
+		}
+	}
+	// If no format works, return nil (not an error, just no parseable time)
+	return nil, nil
 }
 
 // GetTopActiveRooms returns the top N most active public rooms.
