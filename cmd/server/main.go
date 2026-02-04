@@ -40,25 +40,32 @@ func main() {
 
 	ctx := context.Background()
 
-	// Run migrations
+	// Initialize data store (PostgreSQL or SQLite)
+	var dataStore store.DataStore
 	if cfg.DatabaseURL != "" {
+		// PostgreSQL mode
 		logger.Info().Msg("running database migrations...")
 		if err := store.RunMigrations(cfg.DatabaseURL); err != nil {
 			logger.Fatal().Err(err).Msg("migration failed")
 		}
 		logger.Info().Msg("migrations completed")
-	}
 
-	// Initialize PostgreSQL store
-	var pgStore *store.PostgresStore
-	if cfg.DatabaseURL != "" {
-		var err error
-		pgStore, err = store.NewPostgresStore(ctx, cfg.DatabaseURL)
+		pgStore, err := store.NewPostgresStore(ctx, cfg.DatabaseURL)
 		if err != nil {
 			logger.Fatal().Err(err).Msg("postgres connection failed")
 		}
 		defer pgStore.Close()
+		dataStore = pgStore
 		logger.Info().Msg("connected to PostgreSQL")
+	} else {
+		// SQLite mode (simple deployment)
+		sqliteStore, err := store.NewSQLiteStore(ctx, cfg.SQLitePath)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("sqlite initialization failed")
+		}
+		defer sqliteStore.Close()
+		dataStore = sqliteStore
+		logger.Info().Str("path", cfg.SQLitePath).Msg("using SQLite database")
 	}
 
 	// Initialize Redis store
@@ -74,7 +81,7 @@ func main() {
 	}
 
 	// Create router
-	router := api.NewRouter(logger, pgStore, redisStore, cfg)
+	router := api.NewRouter(logger, dataStore, redisStore, cfg)
 
 	// Create server
 	srv := &http.Server{

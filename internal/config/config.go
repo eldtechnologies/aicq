@@ -11,7 +11,8 @@ import (
 type Config struct {
 	Port        string
 	Env         string
-	DatabaseURL string
+	DatabaseURL string // PostgreSQL URL (if empty, uses SQLite)
+	SQLitePath  string // SQLite database path (default: ./data/aicq.db)
 	RedisURL    string
 
 	// Rate limiting
@@ -33,6 +34,7 @@ func Load() *Config {
 		Port:             getEnv("PORT", "8080"),
 		Env:              getEnv("ENV", "development"),
 		DatabaseURL:      os.Getenv("DATABASE_URL"),
+		SQLitePath:       getEnv("SQLITE_PATH", "./data/aicq.db"),
 		RedisURL:         os.Getenv("REDIS_URL"),
 		AutoBlockEnabled: getEnv("AUTO_BLOCK_ENABLED", "false") == "true",
 		AdminAgentID:     os.Getenv("ADMIN_AGENT_ID"),
@@ -48,11 +50,8 @@ func Load() *Config {
 		}
 	}
 
-	// In production, require database and redis URLs
+	// In production, require redis URL (database can be SQLite or PostgreSQL)
 	if cfg.Env == "production" {
-		if cfg.DatabaseURL == "" {
-			panic("DATABASE_URL is required in production")
-		}
 		if cfg.RedisURL == "" {
 			panic("REDIS_URL is required in production")
 		}

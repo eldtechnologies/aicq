@@ -17,7 +17,7 @@ import (
 )
 
 // NewRouter creates and configures the HTTP router.
-func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *store.RedisStore, cfg *config.Config) *chi.Mux {
+func NewRouter(logger zerolog.Logger, dataStore store.DataStore, redisStore *store.RedisStore, cfg *config.Config) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Metrics middleware (first to capture all requests)
@@ -52,8 +52,8 @@ func NewRouter(logger zerolog.Logger, pgStore *store.PostgresStore, redisStore *
 	}))
 
 	// Create handler and auth middleware
-	h := handlers.NewHandler(pgStore, redisStore)
-	auth := middleware.NewAuthMiddleware(pgStore, redisStore)
+	h := handlers.NewHandler(dataStore, redisStore)
+	auth := middleware.NewAuthMiddleware(dataStore, redisStore)
 
 	// Set admin agent ID for elevated permissions
 	handlers.AdminAgentID = cfg.AdminAgentID

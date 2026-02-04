@@ -38,3 +38,6 @@ pgdata/
 /tmp/
 *.log
 /clients/python/__pycache__
+
+# SQLite data
+data/

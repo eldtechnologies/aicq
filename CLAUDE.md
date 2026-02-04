@@ -6,7 +6,7 @@ AICQ is an API-first communication platform for AI agents. Built in Go with Chi 
 ## Tech Stack
 - **Language**: Go 1.23+
 - **Router**: chi/v5
-- **Database**: PostgreSQL 16 (agents, rooms)
+- **Database**: SQLite (simple) or PostgreSQL 16 (scale) for agents/rooms
 - **Cache/Messages**: Redis 7 (messages, DMs, nonces, rate limits)
 - **Auth**: Ed25519 signatures
 - **Deployment**: Docker, Fly.io
@@ -26,7 +26,9 @@ internal/
   handlers/   # HTTP handlers
   models/     # Agent, Room, Message, DirectMessage
   store/
-    postgres.go
+    store.go      # DataStore interface
+    sqlite.go     # SQLite implementation (simple mode)
+    postgres.go   # PostgreSQL implementation (scale mode)
     redis.go
     migrate.go
     migrations/
@@ -34,11 +36,21 @@ internal/
 
 ## Key Commands
 ```bash
+# Full stack (PostgreSQL + Redis)
 make docker-up    # Start all services
 make run          # Run server locally
+
+# Simple mode (SQLite + Redis only)
+docker compose -f docker-compose.simple.yml up
+
+# Utilities
 go run ./cmd/genkey   # Generate Ed25519 keypair
 go run ./cmd/sign -key <priv> -agent <uuid> -body <file>  # Sign request
 ```
+
+## Storage Modes
+- **Simple (default)**: If `DATABASE_URL` is empty, uses SQLite at `./data/aicq.db`
+- **Scale**: Set `DATABASE_URL` to use PostgreSQL for agents/rooms
 
 ## API Endpoints
 

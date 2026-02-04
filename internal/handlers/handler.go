@@ -15,12 +15,12 @@ var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-
 
 // Handler contains shared dependencies for all HTTP handlers.
 type Handler struct {
-	pg    *store.PostgresStore
+	pg    store.DataStore
 	redis *store.RedisStore
 }
 
 // NewHandler creates a new Handler with the given stores.
-func NewHandler(pg *store.PostgresStore, redis *store.RedisStore) *Handler {
+func NewHandler(pg store.DataStore, redis *store.RedisStore) *Handler {
 	return &Handler{pg: pg, redis: redis}
 }
 

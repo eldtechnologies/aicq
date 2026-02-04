@@ -1,0 +1,31 @@
+# Simple deployment: SQLite + Redis only (no PostgreSQL)
+# Usage: docker compose -f docker-compose.simple.yml up
+
+services:
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - ENV=production
+      - REDIS_URL=redis://redis:6379
+      - SQLITE_PATH=/app/data/aicq.db
+      # DATABASE_URL intentionally omitted to use SQLite
+    volumes:
+      - sqlite_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  sqlite_data:

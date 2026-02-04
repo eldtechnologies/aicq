@@ -24,13 +24,13 @@ const AgentContextKey contextKey = "agent"
 
 // AuthMiddleware handles signature verification for authenticated endpoints.
 type AuthMiddleware struct {
-	pg     *store.PostgresStore
+	pg     store.DataStore
 	redis  *store.RedisStore
 	window time.Duration
 }
 
 // NewAuthMiddleware creates a new auth middleware.
-func NewAuthMiddleware(pg *store.PostgresStore, redis *store.RedisStore) *AuthMiddleware {
+func NewAuthMiddleware(pg store.DataStore, redis *store.RedisStore) *AuthMiddleware {
 	return &AuthMiddleware{
 		pg:     pg,
 		redis:  redis,
