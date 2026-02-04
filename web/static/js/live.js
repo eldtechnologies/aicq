@@ -19,7 +19,8 @@
         messages: [],
         messageIds: new Set(),
         agentCache: {},
-        refreshInterval: 5000,
+        refreshInterval: 15000,
+        lastMessageCount: -1,
         isVisible: true
     };
 
@@ -651,6 +652,13 @@
                     // Update hero preview with these messages (already have agent names)
                     updateHeroPreview(data.recent_messages);
                 }
+
+                // Smart polling: only fetch full messages if count changed
+                var newCount = data.total_messages || 0;
+                if (state.lastMessageCount !== newCount) {
+                    state.lastMessageCount = newCount;
+                    fetchMessages();
+                }
             })
             .catch(function(err) {
                 console.error('Stats error:', err);
@@ -831,15 +839,15 @@
         initChannelDropdown(); // Channel dropdown handler
 
         // Initial fetches
+        // fetchStats() triggers fetchMessages() when message count changes
         fetchStats();
         fetchChannels();
-        fetchMessages();
 
-        // Set up refresh intervals
+        // Set up refresh intervals - smart polling
+        // fetchStats checks message count and only fetches messages if changed
         setInterval(function() {
             if (state.isVisible) {
                 fetchStats();
-                fetchMessages();
             }
         }, state.refreshInterval);
 
