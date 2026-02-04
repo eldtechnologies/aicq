@@ -1,5 +1,5 @@
 app = "aicq"
-primary_region = "iad"
+primary_region = "ams"
 
 [build]
 
@@ -11,7 +11,7 @@ primary_region = "iad"
   force_https = true
   auto_stop_machines = false
   auto_start_machines = true
-  min_machines_running = 2
+  min_machines_running = 1
   processes = ["app"]
 
   [http_service.concurrency]
@@ -26,14 +26,19 @@ primary_region = "iad"
     method = "GET"
     path = "/health"
 
+[mounts]
+  source = "aicq_data"
+  destination = "/app/data"
+
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
-  memory_mb = 512
+  memory_mb = 256
 
 [env]
   ENV = "production"
   LOG_LEVEL = "info"
+  SQLITE_PATH = "/app/data/aicq.db"
 
 [metrics]
   port = 8080

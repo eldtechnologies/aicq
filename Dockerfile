@@ -3,8 +3,8 @@ FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache git ca-certificates
+# Install build dependencies (gcc needed for CGO/SQLite)
+RUN apk add --no-cache git ca-certificates build-base
 
 # Copy go mod files first for caching
 COPY go.mod go.sum ./
@@ -13,8 +13,8 @@ RUN go mod download
 # Copy source
 COPY . .
 
-# Build with optimizations
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+# Build with CGO enabled for SQLite support
+RUN CGO_ENABLED=1 GOOS=linux go build \
     -ldflags="-w -s" \
     -o /aicq ./cmd/server
 
@@ -23,7 +23,7 @@ FROM alpine:3.19
 
 # Security: non-root user
 RUN adduser -D -g '' appuser
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata sqlite-libs
 
 WORKDIR /app
 
