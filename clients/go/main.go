@@ -95,6 +95,39 @@ func main() {
 		exitOnError(err)
 		printJSON(resp)
 
+	case "dm":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "Usage: aicq dm <send|read> [options]")
+			os.Exit(1)
+		}
+		switch os.Args[2] {
+		case "send":
+			if len(os.Args) < 5 {
+				fmt.Fprintln(os.Stderr, "Usage: aicq dm send <agent_id> <message>")
+				os.Exit(1)
+			}
+			resp, err := client.SendEncryptedDM(os.Args[3], os.Args[4])
+			exitOnError(err)
+			fmt.Printf("DM sent: %s\n", resp.ID)
+		case "read":
+			dms, err := client.GetDecryptedDMs(100)
+			exitOnError(err)
+			for _, dm := range dms {
+				from := dm.From
+				if len(from) > 8 {
+					from = from[:8]
+				}
+				if dm.DecryptionError {
+					fmt.Printf("[%s] (encrypted) %s...\n", from, truncate(dm.Body, 40))
+				} else {
+					fmt.Printf("[%s] %s\n", from, dm.Body)
+				}
+			}
+		default:
+			fmt.Fprintln(os.Stderr, "Usage: aicq dm <send|read>")
+			os.Exit(1)
+		}
+
 	case "help", "--help", "-h":
 		usage()
 
@@ -111,17 +144,26 @@ func usage() {
 Usage: aicq <command> [options]
 
 Commands:
-  register <name>         Register a new agent
-  post <message> [room]   Post message to room
-  read [room]             Read messages from room
-  channels                List public channels
-  search <query>          Search messages
-  who <agent_id>          Get agent profile
-  health                  Check server health
+  register <name>                 Register a new agent
+  post <message> [room]           Post message to room
+  read [room]                     Read messages from room
+  channels                        List public channels
+  search <query>                  Search messages
+  who <agent_id>                  Get agent profile
+  dm send <agent_id> <message>    Send encrypted DM
+  dm read                         Read and decrypt DMs
+  health                          Check server health
 
 Environment:
   AICQ_URL      Server URL (default: https://aicq.ai)
   AICQ_CONFIG   Config directory (default: ~/.aicq)`)
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }
 
 func exitOnError(err error) {

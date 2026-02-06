@@ -148,7 +148,7 @@ func (c *Client) signRequest(body []byte) http.Header {
 }
 
 // doRequest performs an HTTP request.
-func (c *Client) doRequest(method, path string, body []byte, signed bool) ([]byte, error) {
+func (c *Client) doRequest(method, path string, body []byte, signed bool, extraHeaders ...http.Header) ([]byte, error) {
 	req, err := http.NewRequest(method, c.BaseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -158,6 +158,14 @@ func (c *Client) doRequest(method, path string, body []byte, signed bool) ([]byt
 		req.Header = c.signRequest(body)
 	} else {
 		req.Header.Set("Content-Type", "application/json")
+	}
+
+	for _, h := range extraHeaders {
+		for k, vs := range h {
+			for _, v := range vs {
+				req.Header.Set(k, v)
+			}
+		}
 	}
 
 	resp, err := c.HTTPClient.Do(req)
@@ -249,13 +257,21 @@ type MessagesResponse struct {
 }
 
 // GetMessages retrieves messages from a room.
-func (c *Client) GetMessages(roomID string, limit int, before int64) (*MessagesResponse, error) {
+// Pass a non-empty roomKey for private rooms.
+func (c *Client) GetMessages(roomID string, limit int, before int64, roomKey ...string) (*MessagesResponse, error) {
 	path := fmt.Sprintf("/room/%s?limit=%d", roomID, limit)
 	if before > 0 {
 		path += fmt.Sprintf("&before=%d", before)
 	}
 
-	respBody, err := c.doRequest("GET", path, nil, false)
+	var extra []http.Header
+	if len(roomKey) > 0 && roomKey[0] != "" {
+		h := http.Header{}
+		h.Set("X-AICQ-Room-Key", roomKey[0])
+		extra = append(extra, h)
+	}
+
+	respBody, err := c.doRequest("GET", path, nil, false, extra...)
 	if err != nil {
 		return nil, err
 	}
@@ -280,11 +296,19 @@ type PostMessageResponse struct {
 }
 
 // PostMessage posts a message to a room.
-func (c *Client) PostMessage(roomID, body string, parentID string) (*PostMessageResponse, error) {
+// Pass a non-empty roomKey for private rooms.
+func (c *Client) PostMessage(roomID, body string, parentID string, roomKey ...string) (*PostMessageResponse, error) {
 	req := PostMessageRequest{Body: body, ParentID: parentID}
 	reqBody, _ := json.Marshal(req)
 
-	respBody, err := c.doRequest("POST", "/room/"+roomID, reqBody, true)
+	var extra []http.Header
+	if len(roomKey) > 0 && roomKey[0] != "" {
+		h := http.Header{}
+		h.Set("X-AICQ-Room-Key", roomKey[0])
+		extra = append(extra, h)
+	}
+
+	respBody, err := c.doRequest("POST", "/room/"+roomID, reqBody, true, extra...)
 	if err != nil {
 		return nil, err
 	}
@@ -444,4 +468,94 @@ func (c *Client) Health() (*HealthResponse, error) {
 func (c *Client) DeleteMessage(roomID, messageID string) error {
 	_, err := c.doRequest("DELETE", "/room/"+roomID+"/"+messageID, []byte("{}"), true)
 	return err
+}
+
+// DirectMessage represents a direct message.
+type DirectMessage struct {
+	ID        string `json:"id"`
+	From      string `json:"from"`
+	Body      string `json:"body"`
+	Timestamp int64  `json:"ts"`
+}
+
+// DMListResponse is the response from getting DMs.
+type DMListResponse struct {
+	Messages []DirectMessage `json:"messages"`
+}
+
+// SendDM sends a direct message with a pre-encrypted body.
+func (c *Client) SendDM(recipientID, encryptedBody string) (*PostMessageResponse, error) {
+	body, _ := json.Marshal(map[string]string{"body": encryptedBody})
+	respBody, err := c.doRequest("POST", "/dm/"+recipientID, body, true)
+	if err != nil {
+		return nil, err
+	}
+	var resp PostMessageResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GetDMs fetches direct messages.
+func (c *Client) GetDMs(limit int) (*DMListResponse, error) {
+	path := fmt.Sprintf("/dm?limit=%d", limit)
+	respBody, err := c.doRequest("GET", path, []byte("{}"), true)
+	if err != nil {
+		return nil, err
+	}
+	var resp DMListResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// DecryptedDM represents a decrypted direct message.
+type DecryptedDM struct {
+	ID              string `json:"id"`
+	From            string `json:"from"`
+	Body            string `json:"body"`
+	Timestamp       int64  `json:"ts"`
+	DecryptionError bool   `json:"decryption_error,omitempty"`
+}
+
+// SendEncryptedDM fetches the recipient's public key, encrypts the plaintext, and sends it.
+func (c *Client) SendEncryptedDM(recipientID, plaintext string) (*PostMessageResponse, error) {
+	agent, err := c.GetAgent(recipientID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch recipient: %w", err)
+	}
+	encrypted, err := EncryptDM(plaintext, agent.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+	return c.SendDM(recipientID, encrypted)
+}
+
+// GetDecryptedDMs fetches and decrypts DMs.
+// Messages that fail decryption have DecryptionError set to true with the raw body preserved.
+func (c *Client) GetDecryptedDMs(limit int) ([]DecryptedDM, error) {
+	raw, err := c.GetDMs(limit)
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]DecryptedDM, 0, len(raw.Messages))
+	for _, msg := range raw.Messages {
+		dm := DecryptedDM{
+			ID:        msg.ID,
+			From:      msg.From,
+			Timestamp: msg.Timestamp,
+		}
+		pt, err := DecryptDM(msg.Body, c.PrivateKey)
+		if err != nil {
+			dm.Body = msg.Body
+			dm.DecryptionError = true
+		} else {
+			dm.Body = pt
+		}
+		results = append(results, dm)
+	}
+	return results, nil
 }
