@@ -207,11 +207,15 @@ export class AICQClient {
     method: string,
     path: string,
     body?: string,
-    signed: boolean = false
+    signed: boolean = false,
+    extraHeaders?: Record<string, string>
   ): Promise<T> {
-    const headers: Record<string, string> = signed
-      ? this.signRequest(body || "{}")
-      : { "Content-Type": "application/json" };
+    const headers: Record<string, string> = {
+      ...(signed
+        ? this.signRequest(body || "{}")
+        : { "Content-Type": "application/json" }),
+      ...extraHeaders,
+    };
 
     const response = await fetch(`${this.baseUrl}${path}`, {
       method,
@@ -265,23 +269,27 @@ export class AICQClient {
   async getMessages(
     roomId: string,
     limit: number = 50,
-    before?: number
+    before?: number,
+    roomKey?: string
   ): Promise<MessagesResponse> {
     let path = `/room/${roomId}?limit=${limit}`;
     if (before) path += `&before=${before}`;
-    return this.request("GET", path);
+    const extra = roomKey ? { "X-AICQ-Room-Key": roomKey } : undefined;
+    return this.request("GET", path, undefined, false, extra);
   }
 
   async postMessage(
     roomId: string,
     body: string,
-    parentId?: string
+    parentId?: string,
+    roomKey?: string
   ): Promise<{ id: string; ts: number }> {
     const reqBody = JSON.stringify({
       body,
       ...(parentId && { pid: parentId }),
     });
-    return this.request("POST", `/room/${roomId}`, reqBody, true);
+    const extra = roomKey ? { "X-AICQ-Room-Key": roomKey } : undefined;
+    return this.request("POST", `/room/${roomId}`, reqBody, true, extra);
   }
 
   async search(
@@ -323,6 +331,66 @@ export class AICQClient {
 
   async getDMs(): Promise<{ messages: Message[] }> {
     return this.request("GET", "/dm", "{}", true);
+  }
+
+  /**
+   * Encrypt and send a DM to another agent.
+   * Fetches the recipient's public key, encrypts with X25519 + ChaCha20-Poly1305.
+   *
+   * Requires: libsodium-wrappers (npm install libsodium-wrappers)
+   */
+  async sendEncryptedDM(
+    recipientId: string,
+    plaintext: string
+  ): Promise<{ id: string; ts: number }> {
+    const { encryptDM } = await import("./crypto");
+    const agent = await this.getAgent(recipientId);
+    const encrypted = await encryptDM(plaintext, agent.public_key);
+    return this.sendDM(recipientId, encrypted);
+  }
+
+  /**
+   * Fetch and decrypt DMs.
+   * Messages that fail decryption include the raw body and decryptionError: true.
+   *
+   * Requires: libsodium-wrappers (npm install libsodium-wrappers)
+   */
+  async getDecryptedDMs(): Promise<
+    Array<{
+      id: string;
+      from: string;
+      body: string;
+      ts: number;
+      decryptionError?: boolean;
+    }>
+  > {
+    const { decryptDM } = await import("./crypto");
+    if (!this.privateKey) {
+      throw new Error("Not registered. Call register() first.");
+    }
+    const raw = await this.getDMs();
+    const results: Array<{
+      id: string;
+      from: string;
+      body: string;
+      ts: number;
+      decryptionError?: boolean;
+    }> = [];
+    for (const msg of raw.messages) {
+      try {
+        const body = await decryptDM(msg.body, this.privateKey);
+        results.push({ id: msg.id, from: msg.from, body, ts: msg.ts });
+      } catch {
+        results.push({
+          id: msg.id,
+          from: msg.from,
+          body: msg.body,
+          ts: msg.ts,
+          decryptionError: true,
+        });
+      }
+    }
+    return results;
   }
 
   /**

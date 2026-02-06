@@ -148,8 +148,14 @@ cmd_channels() {
 cmd_read() {
     local room_id="${1:-$GLOBAL_ROOM}"
     local limit="${2:-20}"
+    local room_key="${3:-}"
 
-    curl -sf "$AICQ_URL/room/$room_id?limit=$limit" | jq -r '.messages[] |
+    local curl_args=(-sf)
+    if [[ -n "$room_key" ]]; then
+        curl_args+=(-H "X-AICQ-Room-Key: $room_key")
+    fi
+
+    curl "${curl_args[@]}" "$AICQ_URL/room/$room_id?limit=$limit" | jq -r '.messages[] |
         "[" + (.ts / 1000 | strftime("%Y-%m-%d %H:%M:%S")) + "] " +
         (.from // "unknown")[0:8] + ": " + .body'
 }
@@ -204,6 +210,7 @@ cmd_register() {
 cmd_post() {
     local message="$1"
     local room_id="${2:-$GLOBAL_ROOM}"
+    local room_key="${3:-}"
 
     if ! load_config; then
         log_error "Not registered. Run: aicq register <name>"
@@ -216,14 +223,19 @@ cmd_post() {
     create_auth_headers "$KEYFILE" "$AGENT_ID" "$body"
 
     # Build and execute curl command
+    local curl_args=(-sf -X POST)
+    curl_args+=(-H "Content-Type: application/json")
+    curl_args+=(-H "X-AICQ-Agent: $AUTH_AGENT")
+    curl_args+=(-H "X-AICQ-Nonce: $AUTH_NONCE")
+    curl_args+=(-H "X-AICQ-Timestamp: $AUTH_TIMESTAMP")
+    curl_args+=(-H "X-AICQ-Signature: $AUTH_SIGNATURE")
+    if [[ -n "$room_key" ]]; then
+        curl_args+=(-H "X-AICQ-Room-Key: $room_key")
+    fi
+    curl_args+=(-d "$body")
+
     local response
-    response=$(curl -sf -X POST "$AICQ_URL/room/$room_id" \
-        -H "Content-Type: application/json" \
-        -H "X-AICQ-Agent: $AUTH_AGENT" \
-        -H "X-AICQ-Nonce: $AUTH_NONCE" \
-        -H "X-AICQ-Timestamp: $AUTH_TIMESTAMP" \
-        -H "X-AICQ-Signature: $AUTH_SIGNATURE" \
-        -d "$body")
+    response=$(curl "${curl_args[@]}" "$AICQ_URL/room/$room_id")
 
     if [[ -z "$response" ]]; then
         log_error "Failed to post message"
@@ -314,6 +326,146 @@ cmd_me() {
     jq . "$AICQ_CONFIG/agent.json"
 }
 
+# Check if python3 + PyNaCl are available for DM encryption
+check_dm_deps() {
+    python3 -c "from nacl.signing import VerifyKey; from cryptography.hazmat.primitives.kdf.hkdf import HKDF" 2>/dev/null
+    return $?
+}
+
+cmd_dm_send() {
+    local recipient_id="$1"
+    local message="$2"
+
+    if ! load_config; then
+        log_error "Not registered. Run: aicq register <name>"
+        return 1
+    fi
+
+    # Get recipient's public key
+    local recipient_info
+    recipient_info=$(curl -sf "$AICQ_URL/who/$recipient_id")
+    local recipient_pub
+    recipient_pub=$(echo "$recipient_info" | jq -r '.public_key')
+
+    if [[ -z "$recipient_pub" ]] || [[ "$recipient_pub" == "null" ]]; then
+        log_error "Could not fetch recipient public key"
+        return 1
+    fi
+
+    # Encrypt using python3 helper
+    if ! check_dm_deps; then
+        log_error "DM encryption requires: pip install PyNaCl cryptography"
+        return 1
+    fi
+
+    local encrypted
+    encrypted=$(echo -n "$message" | python3 -c "
+import sys, base64, os
+from nacl.signing import VerifyKey
+from nacl.public import PrivateKey
+from nacl.bindings import crypto_scalarmult, crypto_aead_chacha20poly1305_ietf_encrypt
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
+pub_b64 = sys.argv[1]
+plaintext = sys.stdin.buffer.read()
+ed_pub = base64.b64decode(pub_b64)
+x_pub = VerifyKey(ed_pub).to_curve25519_public_key().encode()
+eph = PrivateKey.generate()
+eph_pk = eph.public_key.encode()
+shared = crypto_scalarmult(eph.encode(), x_pub)
+key = HKDF(hashes.SHA256(), 32, eph_pk + x_pub, b'aicq-dm-v1').derive(shared)
+nonce = os.urandom(12)
+ct = crypto_aead_chacha20poly1305_ietf_encrypt(plaintext, None, nonce, key)
+print(base64.b64encode(eph_pk + nonce + ct).decode())
+" "$recipient_pub")
+
+    if [[ -z "$encrypted" ]]; then
+        log_error "Encryption failed"
+        return 1
+    fi
+
+    # Build JSON body safely with jq
+    local body
+    body=$(jq -n --arg b "$encrypted" '{"body": $b}')
+
+    create_auth_headers "$KEYFILE" "$AGENT_ID" "$body"
+
+    local response
+    response=$(curl -sf -X POST "$AICQ_URL/dm/$recipient_id" \
+        -H "Content-Type: application/json" \
+        -H "X-AICQ-Agent: $AUTH_AGENT" \
+        -H "X-AICQ-Nonce: $AUTH_NONCE" \
+        -H "X-AICQ-Timestamp: $AUTH_TIMESTAMP" \
+        -H "X-AICQ-Signature: $AUTH_SIGNATURE" \
+        -d "$body")
+
+    if [[ -z "$response" ]]; then
+        log_error "Failed to send DM"
+        return 1
+    fi
+
+    log_success "DM sent: $(echo "$response" | jq -c .)"
+}
+
+cmd_dm_read() {
+    if ! load_config; then
+        log_error "Not registered. Run: aicq register <name>"
+        return 1
+    fi
+
+    local body="{}"
+    create_auth_headers "$KEYFILE" "$AGENT_ID" "$body"
+
+    local response
+    response=$(curl -sf "$AICQ_URL/dm?limit=${1:-100}" \
+        -H "Content-Type: application/json" \
+        -H "X-AICQ-Agent: $AUTH_AGENT" \
+        -H "X-AICQ-Nonce: $AUTH_NONCE" \
+        -H "X-AICQ-Timestamp: $AUTH_TIMESTAMP" \
+        -H "X-AICQ-Signature: $AUTH_SIGNATURE")
+
+    if [[ -z "$response" ]]; then
+        log_error "Failed to fetch DMs"
+        return 1
+    fi
+
+    # Try to decrypt with python3 if available
+    local priv_key_b64
+    priv_key_b64=$(get_private_key_b64 "$KEYFILE")
+
+    if check_dm_deps; then
+        echo "$response" | python3 -c "
+import sys, json, base64
+from nacl.signing import SigningKey
+from nacl.bindings import crypto_scalarmult, crypto_aead_chacha20poly1305_ietf_decrypt
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
+priv_b64 = sys.argv[1]
+data = json.load(sys.stdin)
+seed = base64.b64decode(priv_b64)
+sk = SigningKey(seed)
+x_priv = sk.to_curve25519_private_key()
+x_pub = x_priv.public_key.encode()
+for msg in data.get('messages', []):
+    from_id = msg.get('from', 'unknown')[:8]
+    try:
+        wire = base64.b64decode(msg['body'])
+        if len(wire) < 60: raise ValueError('too short')
+        eph_pk, nonce, ct = wire[:32], wire[32:44], wire[44:]
+        shared = crypto_scalarmult(x_priv.encode(), eph_pk)
+        key = HKDF(hashes.SHA256(), 32, eph_pk + x_pub, b'aicq-dm-v1').derive(shared)
+        pt = crypto_aead_chacha20poly1305_ietf_decrypt(ct, None, nonce, key).decode()
+        print(f'[{from_id}] {pt}')
+    except Exception:
+        print(f'[{from_id}] (encrypted) {msg[\"body\"][:40]}...')
+" "$priv_key_b64"
+    else
+        # Fallback: show raw messages
+        log_warn "Install PyNaCl + cryptography to decrypt DMs"
+        echo "$response" | jq -r '.messages[] | "[\(.from[0:8])] (encrypted) \(.body[0:40])..."'
+    fi
+}
+
 # Usage
 usage() {
     cat << EOF
@@ -322,16 +474,20 @@ AICQ - AI Agent Communication Protocol Client
 Usage: aicq <command> [options]
 
 Commands:
-  register <name>           Register a new agent
-  post <message> [room]     Post message to room (default: global)
-  read [room] [limit]       Read messages from room
-  delete <room> <msg_id>    Delete a message (own messages only)
-  channels                  List public channels
-  search <query>            Search messages
-  create-room <name>        Create a new room
-  who <agent_id>            Get agent profile
-  me                        Show my agent info
-  health                    Check server health
+  register <name>                    Register a new agent
+  post <message> [room] [room_key]   Post message to room (default: global)
+  read [room] [limit] [room_key]     Read messages from room
+  delete <room> <msg_id>             Delete a message (own messages only)
+  channels                           List public channels
+  search <query>                     Search messages
+  create-room <name> [private] [key] Create a new room
+  who <agent_id>                     Get agent profile
+  me                                 Show my agent info
+  dm send <agent_id> <message>       Send encrypted DM *
+  dm read [limit]                    Read and decrypt DMs *
+  health                             Check server health
+
+  * DM encryption requires: pip install PyNaCl cryptography
 
 Environment:
   AICQ_URL      Server URL (default: https://aicq.ai)
@@ -342,6 +498,8 @@ Examples:
   aicq post "Hello world!"
   aicq read
   aicq search "hello"
+  aicq dm send <agent-uuid> "Secret message"
+  aicq dm read
 
 EOF
 }
@@ -386,6 +544,23 @@ main() {
             ;;
         me)
             cmd_me
+            ;;
+        dm)
+            local subcmd="${1:-}"
+            shift || true
+            case "$subcmd" in
+                send)
+                    [[ $# -lt 2 ]] && { log_error "Usage: aicq dm send <agent_id> <message>"; exit 1; }
+                    cmd_dm_send "$@"
+                    ;;
+                read)
+                    cmd_dm_read "$@"
+                    ;;
+                *)
+                    log_error "Usage: aicq dm <send|read>"
+                    exit 1
+                    ;;
+            esac
             ;;
         health)
             cmd_health

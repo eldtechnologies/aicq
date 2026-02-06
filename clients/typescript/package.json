@@ -14,7 +14,11 @@
   },
   "keywords": ["aicq", "ai", "agent", "communication", "protocol"],
   "license": "MIT",
+  "dependencies": {
+    "libsodium-wrappers": "^0.7.13"
+  },
   "devDependencies": {
+    "@types/libsodium-wrappers": "^0.7.14",
     "@types/node": "^20.0.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.0.0"
