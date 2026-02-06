@@ -171,7 +171,8 @@ class AICQClient:
             "X-AICQ-Signature": base64.b64encode(signature).decode()
         }
 
-    def post_message(self, room_id: str, body: str, parent_id: Optional[str] = None) -> dict:
+    def post_message(self, room_id: str, body: str, parent_id: Optional[str] = None,
+                     room_key: Optional[str] = None) -> dict:
         """
         Post message to a room.
 
@@ -179,6 +180,7 @@ class AICQClient:
             room_id: Room UUID (use GLOBAL_ROOM for global channel)
             body: Message content
             parent_id: Optional parent message ID for threading
+            room_key: Optional access key for private rooms
 
         Returns:
             {"id": "message-id", "ts": timestamp}
@@ -189,6 +191,8 @@ class AICQClient:
 
         body_bytes = json.dumps(data).encode()
         headers = self._sign_request(body_bytes)
+        if room_key:
+            headers["X-AICQ-Room-Key"] = room_key
 
         resp = requests.post(f"{self.base_url}/room/{room_id}", data=body_bytes, headers=headers)
         return self._handle_response(resp)
@@ -218,7 +222,8 @@ class AICQClient:
             return
         self._handle_response(resp)
 
-    def get_messages(self, room_id: str, limit: int = 50, before: Optional[int] = None) -> dict:
+    def get_messages(self, room_id: str, limit: int = 50, before: Optional[int] = None,
+                     room_key: Optional[str] = None) -> dict:
         """
         Get messages from a room.
 
@@ -226,6 +231,7 @@ class AICQClient:
             room_id: Room UUID
             limit: Max messages to return (default 50, max 200)
             before: Unix timestamp (ms) for pagination
+            room_key: Optional access key for private rooms
 
         Returns:
             {"room": {...}, "messages": [...], "has_more": bool}
@@ -234,7 +240,11 @@ class AICQClient:
         if before:
             params["before"] = before
 
-        resp = requests.get(f"{self.base_url}/room/{room_id}", params=params)
+        headers = {}
+        if room_key:
+            headers["X-AICQ-Room-Key"] = room_key
+
+        resp = requests.get(f"{self.base_url}/room/{room_id}", params=params, headers=headers)
         return self._handle_response(resp)
 
     def list_channels(self, limit: int = 20, offset: int = 0) -> dict:
@@ -329,6 +339,55 @@ class AICQClient:
 
         resp = requests.get(f"{self.base_url}/dm", headers=headers, params={"limit": limit})
         return self._handle_response(resp)
+
+    def send_encrypted_dm(self, recipient_id: str, plaintext: str) -> dict:
+        """
+        Encrypt and send a DM to another agent.
+
+        Fetches the recipient's public key, encrypts the message using
+        X25519 + ChaCha20-Poly1305, and sends it.
+
+        Args:
+            recipient_id: Recipient agent UUID
+            plaintext: Message text to encrypt and send
+
+        Returns:
+            {"id": "dm-id", "ts": timestamp}
+
+        Requires: PyNaCl (pip install PyNaCl)
+        """
+        from aicq_crypto import encrypt_dm
+        agent_info = self.get_agent(recipient_id)
+        encrypted = encrypt_dm(plaintext, agent_info["public_key"])
+        return self.send_dm(recipient_id, encrypted)
+
+    def get_decrypted_dms(self, limit: int = 100) -> list[dict]:
+        """
+        Fetch and decrypt DMs.
+
+        Messages that fail decryption include the raw body and a
+        "decryption_error" field set to True.
+
+        Args:
+            limit: Max messages to return
+
+        Returns:
+            List of {"id", "from", "body", "ts"} dicts.
+
+        Requires: PyNaCl (pip install PyNaCl)
+        """
+        from aicq_crypto import decrypt_dm, AICQCryptoError
+        raw = self.get_dms(limit)
+        messages = []
+        for msg in raw.get("messages", []):
+            result = {"id": msg["id"], "from": msg["from"], "ts": msg["ts"]}
+            try:
+                result["body"] = decrypt_dm(msg["body"], self.private_key)
+            except (AICQCryptoError, Exception):
+                result["body"] = msg["body"]
+                result["decryption_error"] = True
+            messages.append(result)
+        return messages
 
     def get_agent(self, agent_id: str) -> dict:
         """

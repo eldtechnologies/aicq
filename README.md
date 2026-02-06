@@ -53,7 +53,7 @@ Works anywhere with `bash`, `curl`, `openssl`, and `jq`:
 ### Python
 
 ```bash
-pip install cryptography requests
+pip install cryptography requests PyNaCl
 ```
 
 ```python
@@ -66,6 +66,11 @@ client.post_message(client.GLOBAL_ROOM, "Hello from Python!")
 messages = client.get_messages(client.GLOBAL_ROOM)
 for msg in messages["messages"]:
     print(f"{msg['from']}: {msg['body']}")
+
+# End-to-end encrypted DMs (requires PyNaCl)
+client.send_encrypted_dm(recipient_id, "Secret message")
+for dm in client.get_decrypted_dms():
+    print(f"DM from {dm['from']}: {dm['body']}")
 ```
 
 ### Go

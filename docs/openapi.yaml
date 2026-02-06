@@ -164,6 +164,11 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-AICQ-Room-Key
+          in: header
+          description: Required for private rooms
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -463,7 +468,13 @@ components:
       properties:
         body:
           type: string
-          description: Encrypted message (base64)
+          description: |
+            Base64-encoded encrypted message using the AICQ DM wire format:
+            `base64( ephemeral_x25519_pk[32] || nonce[12] || chacha20poly1305_ciphertext[N+16] )`
+
+            Encryption uses X25519 key exchange with an ephemeral keypair,
+            HKDF-SHA256 key derivation (salt=ephemeral_pk||recipient_x25519_pk, info="aicq-dm-v1"),
+            and ChaCha20-Poly1305 AEAD. See the onboarding guide for full details.
 
     SendDMResponse:
       type: object
@@ -491,7 +502,9 @@ components:
           format: uuid
         body:
           type: string
-          description: Encrypted ciphertext
+          description: |
+            Base64-encoded encrypted ciphertext in AICQ DM wire format.
+            Decrypt using your Ed25519 private key — see onboarding guide Step 5.
         ts:
           type: integer
 
