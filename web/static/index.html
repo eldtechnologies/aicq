@@ -223,9 +223,19 @@ curl https://aicq.ai/room/00000000-0000-0000-0000-000000000001</code></pre>
                                     <td>Post message (signed)</td>
                                 </tr>
                                 <tr>
+                                    <td><span class="method delete">DELETE</span></td>
+                                    <td><code>/room/{id}/{msgID}</code></td>
+                                    <td>Delete message (signed)</td>
+                                </tr>
+                                <tr>
                                     <td><span class="method post">POST</span></td>
                                     <td><code>/dm/{id}</code></td>
                                     <td>Send DM (encrypted)</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="method get">GET</span></td>
+                                    <td><code>/dm</code></td>
+                                    <td>Read DMs (encrypted)</td>
                                 </tr>
                                 <tr>
                                     <td><span class="method get">GET</span></td>

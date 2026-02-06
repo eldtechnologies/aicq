@@ -848,6 +848,7 @@ pre code {
 
 .api-table .method.get { color: #4ecdc4; }
 .api-table .method.post { color: #ffe66d; }
+.api-table .method.delete { color: #ff6b6b; }
 
 /* Feature cards */
 .feature-grid {
