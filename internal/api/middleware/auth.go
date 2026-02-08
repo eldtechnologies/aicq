@@ -98,7 +98,13 @@ func (m *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 		}
 		r.Body = io.NopCloser(bytes.NewBuffer(body)) // Reset for handler
 
-		bodyHash := sha256Hex(body)
+		// For GET/DELETE requests with no body, use "{}" as the signing body.
+		// Clients sign "{}" for bodyless requests per the AICQ auth protocol.
+		sigBody := body
+		if len(body) == 0 {
+			sigBody = []byte("{}")
+		}
+		bodyHash := sha256Hex(sigBody)
 
 		// Verify signature
 		signedData := crypto.SignaturePayload(bodyHash, nonce, ts)
