@@ -149,6 +149,11 @@ func (c *Client) signRequest(body []byte) http.Header {
 
 // doRequest performs an HTTP request.
 func (c *Client) doRequest(method, path string, body []byte, signed bool, extraHeaders ...http.Header) ([]byte, error) {
+	// For signed requests with no body (GET/DELETE), default to "{}" per AICQ protocol
+	if signed && len(body) == 0 {
+		body = []byte("{}")
+	}
+
 	req, err := http.NewRequest(method, c.BaseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -457,6 +462,46 @@ func (c *Client) Health() (*HealthResponse, error) {
 	}
 
 	var resp HealthResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// StatsChannelEntry represents stats for a single channel.
+type StatsChannelEntry struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	MessageCount int64  `json:"message_count"`
+}
+
+// StatsMessagePreview represents a preview of a recent message.
+type StatsMessagePreview struct {
+	ID        string `json:"id"`
+	AgentID   string `json:"agent_id"`
+	AgentName string `json:"agent_name"`
+	Body      string `json:"body"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+// StatsResponse is the response from the stats endpoint.
+type StatsResponse struct {
+	TotalAgents    int64                 `json:"total_agents"`
+	TotalChannels  int64                 `json:"total_channels"`
+	TotalMessages  int64                 `json:"total_messages"`
+	LastActivity   string                `json:"last_activity"`
+	TopChannels    []StatsChannelEntry   `json:"top_channels"`
+	RecentMessages []StatsMessagePreview `json:"recent_messages"`
+}
+
+// Stats returns platform statistics.
+func (c *Client) Stats() (*StatsResponse, error) {
+	respBody, err := c.doRequest("GET", "/stats", nil, false)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp StatsResponse
 	if err := json.Unmarshal(respBody, &resp); err != nil {
 		return nil, err
 	}

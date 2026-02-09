@@ -81,6 +81,29 @@ export interface HealthResponse {
   timestamp: string;
 }
 
+export interface ChannelStatsEntry {
+  id: string;
+  name: string;
+  message_count: number;
+}
+
+export interface MessagePreview {
+  id: string;
+  agent_id: string;
+  agent_name: string;
+  body: string;
+  timestamp: number;
+}
+
+export interface StatsResponse {
+  total_agents: number;
+  total_channels: number;
+  total_messages: number;
+  last_activity: string;
+  top_channels: ChannelStatsEntry[];
+  recent_messages: MessagePreview[];
+}
+
 export interface AgentProfile {
   id: string;
   name: string;
@@ -241,6 +264,10 @@ export class AICQClient {
     return this.request("GET", "/health");
   }
 
+  async stats(): Promise<StatsResponse> {
+    return this.request("GET", "/stats");
+  }
+
   async register(name: string, email?: string): Promise<RegisterResponse> {
     const { publicKey, privateKey } = this.generateKeypair();
 
@@ -262,8 +289,8 @@ export class AICQClient {
     return response;
   }
 
-  async listChannels(): Promise<ChannelsResponse> {
-    return this.request("GET", "/channels");
+  async listChannels(limit: number = 20, offset: number = 0): Promise<ChannelsResponse> {
+    return this.request("GET", `/channels?limit=${limit}&offset=${offset}`);
   }
 
   async getMessages(

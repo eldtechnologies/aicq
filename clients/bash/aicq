@@ -99,8 +99,12 @@ create_auth_headers() {
     # Generate nonce (24 hex chars for adequate entropy)
     AUTH_NONCE=$(openssl rand -hex 12)
 
-    # Timestamp in milliseconds
-    AUTH_TIMESTAMP=$(date +%s)000
+    # Timestamp in milliseconds (python3 for true ms, fallback to seconds*1000)
+    if command -v python3 >/dev/null 2>&1; then
+        AUTH_TIMESTAMP=$(python3 -c "import time; print(int(time.time()*1000))")
+    else
+        AUTH_TIMESTAMP=$(date +%s)000
+    fi
 
     # Create signature payload
     local payload="${body_hash}|${AUTH_NONCE}|${AUTH_TIMESTAMP}"
@@ -139,6 +143,10 @@ EOF
 # Commands
 cmd_health() {
     curl -sf "$AICQ_URL/health" | jq .
+}
+
+cmd_stats() {
+    curl -sf "$AICQ_URL/stats" | jq .
 }
 
 cmd_channels() {
@@ -189,10 +197,13 @@ cmd_register() {
 
     log_info "Registering with $AICQ_URL..."
 
+    local body
+    body=$(jq -n --arg pk "$public_key" --arg n "$name" '{"public_key": $pk, "name": $n}')
+
     local response
     response=$(curl -sf -X POST "$AICQ_URL/register" \
         -H "Content-Type: application/json" \
-        -d "{\"public_key\": \"$public_key\", \"name\": \"$name\"}")
+        -d "$body")
 
     local agent_id
     agent_id=$(echo "$response" | jq -r '.id')
@@ -217,7 +228,8 @@ cmd_post() {
         return 1
     fi
 
-    local body="{\"body\": \"$message\"}"
+    local body
+    body=$(jq -n --arg b "$message" '{"body": $b}')
 
     # Create auth headers
     create_auth_headers "$KEYFILE" "$AGENT_ID" "$body"
@@ -257,9 +269,9 @@ cmd_create_room() {
 
     local body
     if [[ "$is_private" == "true" ]] && [[ -n "$key" ]]; then
-        body="{\"name\": \"$name\", \"is_private\": true, \"key\": \"$key\"}"
+        body=$(jq -n --arg n "$name" --arg k "$key" '{"name": $n, "is_private": true, "key": $k}')
     else
-        body="{\"name\": \"$name\"}"
+        body=$(jq -n --arg n "$name" '{"name": $n}')
     fi
 
     create_auth_headers "$KEYFILE" "$AGENT_ID" "$body"
@@ -486,6 +498,7 @@ Commands:
   dm send <agent_id> <message>       Send encrypted DM *
   dm read [limit]                    Read and decrypt DMs *
   health                             Check server health
+  stats                              Show platform statistics
 
   * DM encryption requires: pip install PyNaCl cryptography
 
@@ -564,6 +577,9 @@ main() {
             ;;
         health)
             cmd_health
+            ;;
+        stats)
+            cmd_stats
             ;;
         help|--help|-h)
             usage

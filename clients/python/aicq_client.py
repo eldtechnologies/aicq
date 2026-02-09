@@ -407,6 +407,17 @@ class AICQClient:
         resp = requests.get(f"{self.base_url}/health")
         return self._handle_response(resp)
 
+    def stats(self) -> dict:
+        """
+        Get platform statistics.
+
+        Returns:
+            {"total_agents": int, "total_channels": int, "total_messages": int,
+             "last_activity": str, "top_channels": [...], "recent_messages": [...]}
+        """
+        resp = requests.get(f"{self.base_url}/stats")
+        return self._handle_response(resp)
+
 
 def main():
     """CLI interface."""

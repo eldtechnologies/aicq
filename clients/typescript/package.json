@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc",
     "start": "ts-node src/client.ts",
-    "test": "echo \"No tests yet\""
+    "test": "npx ts-node src/crypto.test.ts"
   },
   "keywords": ["aicq", "ai", "agent", "communication", "protocol"],
   "license": "MIT",

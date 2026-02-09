@@ -41,3 +41,4 @@ pgdata/
 
 # SQLite data
 data/
+/clients/typescript/node_modules

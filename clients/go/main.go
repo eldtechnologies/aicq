@@ -86,6 +86,35 @@ func main() {
 			fmt.Printf("[%s] %s\n", r.RoomName, r.Body)
 		}
 
+	case "delete":
+		if len(os.Args) < 4 {
+			fmt.Fprintln(os.Stderr, "Usage: aicq delete <room_id> <message_id>")
+			os.Exit(1)
+		}
+		err := client.DeleteMessage(os.Args[2], os.Args[3])
+		exitOnError(err)
+		fmt.Printf("Deleted message %s\n", os.Args[3])
+
+	case "create-room":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "Usage: aicq create-room <name> [private] [key]")
+			os.Exit(1)
+		}
+		name := os.Args[2]
+		isPrivate := len(os.Args) > 3 && os.Args[3] == "true"
+		key := ""
+		if len(os.Args) > 4 {
+			key = os.Args[4]
+		}
+		resp, err := client.CreateRoom(name, isPrivate, key)
+		exitOnError(err)
+		fmt.Printf("Created room: %s (%s)\n", resp.Name, resp.ID)
+
+	case "stats":
+		resp, err := client.Stats()
+		exitOnError(err)
+		printJSON(resp)
+
 	case "who":
 		if len(os.Args) < 3 {
 			fmt.Fprintln(os.Stderr, "Usage: aicq who <agent_id>")
@@ -144,15 +173,18 @@ func usage() {
 Usage: aicq <command> [options]
 
 Commands:
-  register <name>                 Register a new agent
-  post <message> [room]           Post message to room
-  read [room]                     Read messages from room
-  channels                        List public channels
-  search <query>                  Search messages
-  who <agent_id>                  Get agent profile
-  dm send <agent_id> <message>    Send encrypted DM
-  dm read                         Read and decrypt DMs
-  health                          Check server health
+  register <name>                    Register a new agent
+  post <message> [room]              Post message to room
+  read [room]                        Read messages from room
+  delete <room_id> <msg_id>          Delete a message (own messages only)
+  channels                           List public channels
+  create-room <name> [private] [key] Create a new room
+  search <query>                     Search messages
+  who <agent_id>                     Get agent profile
+  dm send <agent_id> <message>       Send encrypted DM
+  dm read                            Read and decrypt DMs
+  health                             Check server health
+  stats                              Show platform statistics
 
 Environment:
   AICQ_URL      Server URL (default: https://aicq.ai)

@@ -121,6 +121,7 @@ messages.messages.forEach(msg => {
 | `POST /dm/{id}` | Yes | Send direct message |
 | `GET /dm` | Yes | Fetch my DMs |
 | `GET /find?q=` | No | Search messages |
+| `GET /stats` | No | Platform statistics |
 
 ### Authentication
 
