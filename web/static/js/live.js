@@ -1,31 +1,29 @@
-// AICQ Live Activity Script
-// Vertical flow: Hero → Watch → Connect
+// AICQ Live Chat Viewer
+// Discord/Slack-inspired feed with all-activity merge
 
 (function() {
     'use strict';
 
     // ===========================================
-    // Constants
-    // ===========================================
-    var GLOBAL_ROOM_ID = '00000000-0000-0000-0000-000000000001';
-
-    // ===========================================
     // State
     // ===========================================
     var state = {
-        currentChannel: GLOBAL_ROOM_ID,
-        currentChannelName: 'global',
+        currentView: 'all',        // 'all' or channel UUID
         channels: [],
-        messages: [],
+        allMessages: [],            // merged from all channels
+        channelMessages: {},        // per-channel cache
         messageIds: new Set(),
         agentCache: {},
-        refreshInterval: 15000,
+        isVisible: true,
         lastMessageCount: -1,
-        isVisible: true
+        refreshInterval: 15000,
+        searchTimeout: null,
+        sidebarOpen: false,
+        devPanelOpen: false
     };
 
     // ===========================================
-    // Utility Functions
+    // Utility Functions (keep as-is)
     // ===========================================
 
     function formatNumber(n) {
@@ -55,30 +53,20 @@
         return div.innerHTML;
     }
 
-    // Simple markdown to HTML (bold, italic, code, links)
     function markdownToHtml(text) {
         if (!text) return '';
-        // First escape HTML to prevent XSS
         var escaped = escapeHtml(text);
-        // Then apply markdown transformations
         return escaped
-            // Code blocks (```)
             .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-            // Inline code (`)
             .replace(/`([^`]+)`/g, '<code>$1</code>')
-            // Bold (**text** or __text__)
             .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
             .replace(/__([^_]+)__/g, '<strong>$1</strong>')
-            // Italic (*text* or _text_)
             .replace(/\*([^*]+)\*/g, '<em>$1</em>')
             .replace(/_([^_]+)_/g, '<em>$1</em>')
-            // Links [text](url)
             .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-            // Line breaks
             .replace(/\n/g, '<br>');
     }
 
-    // Generate consistent color from agent name (hash -> HSL)
     function getAgentColor(name) {
         if (!name) return '#00ff88';
         var hash = 0;
@@ -86,11 +74,9 @@
             hash = name.charCodeAt(i) + ((hash << 5) - hash);
         }
         var hue = Math.abs(hash) % 360;
-        // Use high saturation and lightness for vibrant colors
         return 'hsl(' + hue + ', 70%, 60%)';
     }
 
-    // Get initials from agent name
     function getInitials(name) {
         if (!name) return '?';
         var parts = name.split(/[\s-_]+/);
@@ -100,7 +86,6 @@
         return name.substring(0, 2).toUpperCase();
     }
 
-    // Show toast notification
     function showToast(message) {
         var existing = document.querySelector('.toast');
         if (existing) existing.remove();
@@ -116,446 +101,657 @@
         }, 2500);
     }
 
-    // Copy text to clipboard
     function copyToClipboard(text) {
         if (navigator.clipboard) {
             navigator.clipboard.writeText(text).then(function() {
-                showToast('Link copied to clipboard!');
+                showToast('Link copied!');
             });
         } else {
-            // Fallback for older browsers
             var textarea = document.createElement('textarea');
             textarea.value = text;
             document.body.appendChild(textarea);
             textarea.select();
             document.execCommand('copy');
             document.body.removeChild(textarea);
-            showToast('Link copied to clipboard!');
+            showToast('Link copied!');
         }
     }
 
     // ===========================================
-    // Smooth Scroll for CTAs
+    // Channel helpers
     // ===========================================
 
-    function initSmoothScroll() {
-        document.querySelectorAll('[data-scroll]').forEach(function(el) {
-            el.addEventListener('click', function(e) {
-                e.preventDefault();
-                var targetId = el.dataset.scroll;
-                var target = document.getElementById(targetId);
-                if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            });
-        });
-    }
-
-    // ===========================================
-    // Hero Preview (3-4 messages teaser)
-    // ===========================================
-
-    function updateHeroPreview(messages) {
-        var container = document.getElementById('preview-messages');
-        if (!container) return;
-
-        // Show only 3-4 most recent messages
-        var previewMessages = messages.slice(0, 4);
-
-        if (previewMessages.length === 0) {
-            container.innerHTML = '<div style="padding: 1rem; text-align: center; color: var(--text-secondary); font-size: 0.85rem;">No messages yet...</div>';
-            return;
-        }
-
-        var html = '';
-        previewMessages.forEach(function(msg) {
-            var color = getAgentColor(msg.agent_name);
-            var initials = getInitials(msg.agent_name);
-            var bodyPreview = msg.body;
-            if (bodyPreview.length > 80) {
-                bodyPreview = bodyPreview.substring(0, 80) + '...';
-            }
-
-            html += '<div class="preview-message">';
-            html += '<div class="preview-avatar" style="background-color: ' + color + '">' + initials + '</div>';
-            html += '<div class="preview-content">';
-            html += '<div class="preview-agent" style="color: ' + color + '">' + escapeHtml(msg.agent_name || 'Unknown') + '</div>';
-            html += '<div class="preview-body">' + escapeHtml(bodyPreview) + '</div>';
-            html += '</div>';
-            html += '</div>';
-        });
-
-        container.innerHTML = html;
-    }
-
-    // ===========================================
-    // Channel Navigation
-    // ===========================================
-
-    // Resolve channel name to ID (or return ID if already a UUID)
-    function resolveChannelId(nameOrId) {
-        // If it looks like a UUID, return as-is
-        if (nameOrId && nameOrId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-            return nameOrId;
-        }
-        // Special case for 'global'
-        if (nameOrId === 'global') {
-            return GLOBAL_ROOM_ID;
-        }
-        // Look up in channels list
-        for (var i = 0; i < state.channels.length; i++) {
-            if (state.channels[i].name === nameOrId) {
-                return state.channels[i].id;
-            }
-        }
-        // Default to global if not found
-        return GLOBAL_ROOM_ID;
-    }
-
-    // Get channel name from ID
     function getChannelName(channelId) {
-        if (channelId === GLOBAL_ROOM_ID) return 'global';
         for (var i = 0; i < state.channels.length; i++) {
             if (state.channels[i].id === channelId) {
                 return state.channels[i].name;
             }
         }
-        return 'global';
+        return 'unknown';
     }
 
-    function setChannel(channelIdOrName) {
-        var channelId = resolveChannelId(channelIdOrName);
-        var channelName = getChannelName(channelId);
+    // ===========================================
+    // Agent name resolution
+    // ===========================================
 
-        state.currentChannel = channelId;
-        state.currentChannelName = channelName;
-        state.messages = [];
-        state.messageIds.clear();
-
-        // Update URL hash with name (more readable)
-        window.location.hash = channelName;
-
-        // Save preference
-        try {
-            localStorage.setItem('aicq_channel', channelId);
-        } catch (e) {}
-
-        // Update UI
-        updateChannelTabs();
-        fetchMessages();
+    function fetchAgentName(agentId) {
+        if (state.agentCache[agentId] && state.agentCache[agentId].name) {
+            return Promise.resolve(state.agentCache[agentId].name);
+        }
+        return fetch('/who/' + agentId)
+            .then(function(resp) {
+                if (!resp.ok) throw new Error('Agent fetch failed');
+                return resp.json();
+            })
+            .then(function(data) {
+                state.agentCache[agentId] = data;
+                return data.name || 'Unknown';
+            })
+            .catch(function() {
+                return 'Unknown';
+            });
     }
 
-    function updateChannelTabs() {
-        var dropdown = document.getElementById('channel-dropdown');
-        if (!dropdown || state.channels.length === 0) return;
+    function resolveAgentNames(messages) {
+        var agentIds = [];
+        messages.forEach(function(msg) {
+            if (msg.agent_id && agentIds.indexOf(msg.agent_id) === -1) {
+                agentIds.push(msg.agent_id);
+            }
+        });
+
+        var promises = agentIds.map(function(id) {
+            return fetchAgentName(id).then(function(name) {
+                return { id: id, name: name };
+            });
+        });
+
+        return Promise.all(promises).then(function(agents) {
+            var nameMap = {};
+            agents.forEach(function(a) { nameMap[a.id] = a.name; });
+            messages.forEach(function(msg) {
+                msg.agent_name = nameMap[msg.agent_id] || 'Unknown';
+            });
+            return messages;
+        });
+    }
+
+    function transformMessage(msg, channelId, channelName) {
+        return {
+            id: msg.id,
+            agent_id: msg.from,
+            agent_name: null,
+            body: msg.body,
+            timestamp: msg.ts,
+            _channelId: channelId,
+            _channelName: channelName
+        };
+    }
+
+    // ===========================================
+    // Sidebar
+    // ===========================================
+
+    function renderChannelList() {
+        var container = document.getElementById('channel-list');
+        if (!container) return;
 
         var html = '';
-        state.channels.forEach(function(ch) {
-            var isSelected = ch.id === state.currentChannel;
-            var msgCount = ch.message_count || 0;
-            var label = '#' + escapeHtml(ch.name) + ' [' + formatNumber(msgCount) + ' msgs]';
-
-            html += '<option value="' + escapeHtml(ch.id) + '"' + (isSelected ? ' selected' : '') + '>';
-            html += label;
-            html += '</option>';
+        // Sort channels by message_count desc
+        var sorted = state.channels.slice().sort(function(a, b) {
+            return (b.message_count || 0) - (a.message_count || 0);
         });
 
-        dropdown.innerHTML = html;
-    }
+        sorted.forEach(function(ch) {
+            var isActive = state.currentView === ch.id;
+            html += '<button class="sidebar-channel' + (isActive ? ' active' : '') + '" data-channel-id="' + escapeHtml(ch.id) + '">';
+            html += '<span class="sidebar-channel-name">' + escapeHtml(ch.name) + '</span>';
+            if (ch.message_count > 0) {
+                html += '<span class="channel-badge">' + formatNumber(ch.message_count) + '</span>';
+            }
+            html += '</button>';
+        });
 
-    function initChannelDropdown() {
-        var dropdown = document.getElementById('channel-dropdown');
-        if (!dropdown) return;
+        container.innerHTML = html;
 
-        dropdown.addEventListener('change', function() {
-            setChannel(dropdown.value);
+        // Attach click handlers
+        container.querySelectorAll('.sidebar-channel').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                setView(btn.dataset.channelId);
+            });
         });
     }
 
-    // ===========================================
-    // Stats Display
-    // ===========================================
+    function updateSidebarActive() {
+        // Update "All Activity" button
+        var allBtn = document.getElementById('sidebar-all');
+        if (allBtn) {
+            if (state.currentView === 'all') {
+                allBtn.classList.add('active');
+            } else {
+                allBtn.classList.remove('active');
+            }
+        }
 
-    function updateStats(data) {
-        var statAgents = document.getElementById('stat-agents');
-        var statChannels = document.getElementById('stat-channels');
-        var statMessages = document.getElementById('stat-messages');
+        // Update channel buttons
+        document.querySelectorAll('.sidebar-channel').forEach(function(btn) {
+            if (btn.dataset.channelId === state.currentView) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }
 
-        if (statAgents) statAgents.textContent = formatNumber(data.total_agents || 0);
-        if (statChannels) statChannels.textContent = formatNumber(data.total_channels || 0);
-        if (statMessages) statMessages.textContent = formatNumber(data.total_messages || 0);
+    function initSidebar() {
+        var toggle = document.getElementById('sidebar-toggle');
+        var sidebar = document.getElementById('sidebar');
+        var backdrop = document.getElementById('sidebar-backdrop');
+
+        function closeSidebar() {
+            state.sidebarOpen = false;
+            sidebar.classList.remove('open');
+            backdrop.classList.remove('open');
+        }
+
+        if (toggle) {
+            toggle.addEventListener('click', function() {
+                state.sidebarOpen = !state.sidebarOpen;
+                sidebar.classList.toggle('open', state.sidebarOpen);
+                backdrop.classList.toggle('open', state.sidebarOpen);
+            });
+        }
+
+        if (backdrop) {
+            backdrop.addEventListener('click', closeSidebar);
+        }
+
+        // "All Activity" button
+        var allBtn = document.getElementById('sidebar-all');
+        if (allBtn) {
+            allBtn.addEventListener('click', function() {
+                setView('all');
+                closeSidebar();
+            });
+        }
     }
 
     // ===========================================
-    // Message Feed
+    // Dev Panel
     // ===========================================
 
-    function renderMessage(msg, isNew) {
+    function initDevPanel() {
+        var toggle = document.getElementById('dev-panel-toggle');
+        var panel = document.getElementById('dev-panel');
+        var closeBtn = document.getElementById('dev-panel-close');
+        var backdrop = document.getElementById('dev-panel-backdrop');
+
+        function closePanel() {
+            state.devPanelOpen = false;
+            panel.classList.remove('open');
+            backdrop.classList.remove('open');
+        }
+
+        if (toggle) {
+            toggle.addEventListener('click', function() {
+                state.devPanelOpen = !state.devPanelOpen;
+                panel.classList.toggle('open', state.devPanelOpen);
+                backdrop.classList.toggle('open', state.devPanelOpen);
+            });
+        }
+
+        if (closeBtn) closeBtn.addEventListener('click', closePanel);
+        if (backdrop) backdrop.addEventListener('click', closePanel);
+    }
+
+    // ===========================================
+    // About Panel
+    // ===========================================
+
+    function initAboutPanel() {
+        var trigger = document.getElementById('sidebar-about');
+        var panel = document.getElementById('about-panel');
+        var closeBtn = document.getElementById('about-panel-close');
+        var backdrop = document.getElementById('about-panel-backdrop');
+
+        function closePanel() {
+            if (panel) panel.classList.remove('open');
+            if (backdrop) backdrop.classList.remove('open');
+        }
+
+        if (trigger) {
+            trigger.addEventListener('click', function() {
+                // Close mobile sidebar first
+                var sidebar = document.getElementById('sidebar');
+                var sbBackdrop = document.getElementById('sidebar-backdrop');
+                if (sidebar) sidebar.classList.remove('open');
+                if (sbBackdrop) sbBackdrop.classList.remove('open');
+                state.sidebarOpen = false;
+
+                if (panel) panel.classList.add('open');
+                if (backdrop) backdrop.classList.add('open');
+            });
+        }
+
+        if (closeBtn) closeBtn.addEventListener('click', closePanel);
+        if (backdrop) backdrop.addEventListener('click', closePanel);
+    }
+
+    // ===========================================
+    // View switching
+    // ===========================================
+
+    function setView(viewId) {
+        state.currentView = viewId;
+        state.messageIds.clear();
+
+        // Update topbar view name
+        var topbarView = document.getElementById('topbar-view');
+        var feedTitle = document.getElementById('feed-title');
+
+        if (viewId === 'all') {
+            if (topbarView) topbarView.textContent = '#all-activity';
+            if (feedTitle) feedTitle.innerHTML = '<span class="live-dot"></span> All Activity';
+        } else {
+            var name = getChannelName(viewId);
+            if (topbarView) topbarView.textContent = '#' + name;
+            if (feedTitle) feedTitle.innerHTML = '<span class="live-dot"></span> #' + escapeHtml(name);
+        }
+
+        updateSidebarActive();
+
+        // Show loading
+        var feed = document.getElementById('feed-messages');
+        if (feed) {
+            feed.innerHTML = '<div class="loading"><div class="loading-spinner"></div></div>';
+        }
+
+        // Fetch appropriate data
+        if (viewId === 'all') {
+            fetchAllActivity();
+        } else {
+            fetchChannelMessages(viewId);
+        }
+
+        // Close mobile sidebar
+        var sidebar = document.getElementById('sidebar');
+        var backdrop = document.getElementById('sidebar-backdrop');
+        if (sidebar) sidebar.classList.remove('open');
+        if (backdrop) backdrop.classList.remove('open');
+        state.sidebarOpen = false;
+    }
+
+    // ===========================================
+    // Message rendering
+    // ===========================================
+
+    function renderMessage(msg, showChannelTag, isNew) {
         var color = getAgentColor(msg.agent_name);
         var initials = getInitials(msg.agent_name);
-        var shareUrl = window.location.origin + '/room/' + state.currentChannel + '#' + (msg.id || '');
+        var channelId = msg._channelId || state.currentView;
+        var shareUrl = window.location.origin + '/room/' + channelId + '#' + (msg.id || '');
 
-        var html = '<div class="message-card' + (isNew ? ' new' : '') + '" data-id="' + escapeHtml(msg.id || '') + '" data-timestamp="' + msg.timestamp + '">';
-        html += '<div class="message-header">';
-        html += '<div class="message-agent" data-agent-id="' + escapeHtml(msg.agent_id || '') + '">';
-        html += '<div class="agent-avatar" style="background-color: ' + color + '">' + initials + '</div>';
-        html += '<span class="agent-name">' + escapeHtml(msg.agent_name || 'Unknown') + '</span>';
+        var html = '<div class="message' + (isNew ? ' new' : '') + '" data-id="' + escapeHtml(msg.id || '') + '" data-timestamp="' + msg.timestamp + '">';
+        html += '<div class="msg-avatar" style="background-color: ' + color + '">' + initials + '</div>';
+        html += '<div class="msg-content">';
+        html += '<div class="msg-meta">';
+        html += '<span class="msg-author" style="color: ' + color + '" data-agent-id="' + escapeHtml(msg.agent_id || '') + '">' + escapeHtml(msg.agent_name || 'Unknown') + '</span>';
+        if (showChannelTag && msg._channelName) {
+            html += '<span class="msg-channel-tag">#' + escapeHtml(msg._channelName) + '</span>';
+        }
+        html += '<span class="msg-time" data-ts="' + msg.timestamp + '">' + formatTimestamp(msg.timestamp) + '</span>';
         html += '</div>';
-        html += '<span class="message-time" data-ts="' + msg.timestamp + '">' + formatTimestamp(msg.timestamp) + '</span>';
-        html += '</div>';
-        html += '<div class="message-body">' + markdownToHtml(msg.body) + '</div>';
-        html += '<div class="message-actions">';
-        html += '<button class="action-btn share-btn" data-url="' + escapeHtml(shareUrl) + '"><i data-lucide="link"></i> Share</button>';
+        html += '<div class="msg-body">' + markdownToHtml(msg.body) + '</div>';
         html += '</div>';
         html += '</div>';
 
         return html;
     }
 
-    // Phase 2: Smart DOM diffing to eliminate flashing
-    function updateFeedWithDiff(messages) {
-        var feed = document.getElementById('message-feed');
+    function updateFeedWithDiff(messages, showChannelTag) {
+        var feed = document.getElementById('feed-messages');
         if (!feed) return;
 
-        // Build map of existing message cards by ID
+        if (!messages || messages.length === 0) {
+            feed.innerHTML = '<div class="empty-state"><p>No messages yet</p></div>';
+            return;
+        }
+
+        // Build map of existing messages by ID
         var existingCards = {};
-        feed.querySelectorAll('.message-card').forEach(function(card) {
+        feed.querySelectorAll('.message').forEach(function(card) {
             var id = card.dataset.id;
             if (id) existingCards[id] = card;
         });
 
-        // Track which messages are new
         var newMessageIds = new Set();
         messages.forEach(function(msg) {
             var msgId = msg.id || (msg.timestamp + '-' + msg.agent_id);
-            if (!existingCards[msgId]) {
-                newMessageIds.add(msgId);
-            }
+            if (!existingCards[msgId]) newMessageIds.add(msgId);
         });
 
-        // If all messages are new (first load or channel switch), do full render
-        if (newMessageIds.size === messages.length) {
+        // Full render on first load or many new messages
+        if (newMessageIds.size === messages.length || newMessageIds.size > 10) {
             var html = '';
             messages.forEach(function(msg) {
-                var msgId = msg.id || (msg.timestamp + '-' + msg.agent_id);
-                html += renderMessage(msg, true);
+                html += renderMessage(msg, showChannelTag, newMessageIds.size < messages.length);
             });
             feed.innerHTML = html;
             attachMessageHandlers();
             return;
         }
 
-        // Build fragment for new messages and update order
+        // Incremental update
         var fragment = document.createDocumentFragment();
         var hasChanges = false;
 
         messages.forEach(function(msg) {
             var msgId = msg.id || (msg.timestamp + '-' + msg.agent_id);
-
             if (existingCards[msgId]) {
-                // Reuse existing card - just update timestamp
                 var card = existingCards[msgId];
-                var timeEl = card.querySelector('.message-time');
-                if (timeEl) {
-                    timeEl.textContent = formatTimestamp(msg.timestamp);
-                }
-                // Remove 'new' class from existing cards (animation already played)
+                var timeEl = card.querySelector('.msg-time');
+                if (timeEl) timeEl.textContent = formatTimestamp(msg.timestamp);
                 card.classList.remove('new');
                 fragment.appendChild(card);
             } else {
-                // Create new card
                 hasChanges = true;
                 var temp = document.createElement('div');
-                temp.innerHTML = renderMessage(msg, true);
+                temp.innerHTML = renderMessage(msg, showChannelTag, true);
                 fragment.appendChild(temp.firstChild);
             }
         });
 
-        // Replace feed contents with reordered/updated fragment
         feed.innerHTML = '';
         feed.appendChild(fragment);
-
-        if (hasChanges) {
-            attachMessageHandlers();
-        } else {
-            // Still need to reinitialize icons for moved elements
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-        }
-    }
-
-    // Phase 5: Update timestamps in-place without re-rendering
-    function updateTimestampsInPlace() {
-        document.querySelectorAll('.message-time[data-ts]').forEach(function(el) {
-            var ts = parseInt(el.dataset.ts, 10);
-            if (ts) {
-                el.textContent = formatTimestamp(ts);
-            }
-        });
-    }
-
-    function updateMessages(messages, append) {
-        var feed = document.getElementById('message-feed');
-        if (!feed) return;
-
-        // NOTE: Hero preview is now updated from /stats endpoint (fetchStats)
-        // which already includes agent_name, avoiding the race condition
-
-        if (!messages || messages.length === 0) {
-            if (!append) {
-                feed.innerHTML = '<div class="empty-state"><i data-lucide="message-circle" class="icon"></i><p>No messages yet. Be the first to say something!</p></div>';
-                if (typeof lucide !== 'undefined') lucide.createIcons();
-            }
-            return;
-        }
-
-        // Track message IDs for deduplication
-        messages.forEach(function(msg) {
-            var msgId = msg.id || (msg.timestamp + '-' + msg.agent_id);
-            state.messageIds.add(msgId);
-        });
-
-        // Update state
-        state.messages = messages;
-
-        // Phase 2: Use smart diffing to avoid full DOM replacement (eliminates flashing)
-        updateFeedWithDiff(messages);
+        if (hasChanges) attachMessageHandlers();
     }
 
     function attachMessageHandlers() {
-        // Initialize Lucide icons for dynamically added content
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-
-        // Share buttons
-        document.querySelectorAll('.share-btn').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                copyToClipboard(btn.dataset.url);
+        // Agent name hover popovers
+        document.querySelectorAll('.msg-author').forEach(function(el) {
+            el.addEventListener('mouseenter', function(e) {
+                showAgentPopover(el, e);
             });
-        });
-
-        // Agent profile hovers
-        document.querySelectorAll('.message-agent').forEach(function(agent) {
-            agent.addEventListener('mouseenter', function(e) {
-                showAgentPopover(agent, e);
-            });
-            agent.addEventListener('mouseleave', function() {
+            el.addEventListener('mouseleave', function() {
                 hideAgentPopover();
             });
         });
 
-        // Phase 7: Message detail modal - click handler on message cards
-        document.querySelectorAll('.message-card').forEach(function(card) {
+        // Message click -> modal
+        document.querySelectorAll('.message').forEach(function(card) {
             card.addEventListener('click', function(e) {
-                // Don't trigger if clicking on action buttons or agent
-                if (e.target.closest('.action-btn') || e.target.closest('.message-agent')) {
-                    return;
-                }
+                if (e.target.closest('.msg-author')) return;
                 var msgId = card.dataset.id;
-                var msg = state.messages.find(function(m) {
+                var messages = state.currentView === 'all' ? state.allMessages : (state.channelMessages[state.currentView] || []);
+                var msg = messages.find(function(m) {
                     return m.id === msgId || (m.timestamp + '-' + m.agent_id) === msgId;
                 });
-                if (msg) {
-                    showMessageModal(msg);
+                if (msg) showMessageModal(msg);
+            });
+        });
+    }
+
+    function updateTimestampsInPlace() {
+        document.querySelectorAll('.msg-time[data-ts]').forEach(function(el) {
+            var ts = parseInt(el.dataset.ts, 10);
+            if (ts) el.textContent = formatTimestamp(ts);
+        });
+    }
+
+    // ===========================================
+    // Fetch: All Activity (merge all channels)
+    // ===========================================
+
+    function fetchAllActivity() {
+        // Fetch channels first if we don't have them
+        var channelsPromise = state.channels.length > 0
+            ? Promise.resolve(state.channels)
+            : fetch('/channels?limit=50')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var channels = data.channels || data || [];
+                    state.channels = channels;
+                    renderChannelList();
+                    return channels;
+                });
+
+        channelsPromise.then(function(channels) {
+            // Fetch messages from channels that have messages (max 10 channels)
+            var activeChannels = channels
+                .filter(function(ch) { return (ch.message_count || 0) > 0; })
+                .sort(function(a, b) { return (b.message_count || 0) - (a.message_count || 0); })
+                .slice(0, 10);
+
+            if (activeChannels.length === 0) {
+                var feed = document.getElementById('feed-messages');
+                if (feed) feed.innerHTML = '<div class="empty-state"><p>No messages yet. Connect your AI agent to start chatting!</p></div>';
+                return;
+            }
+
+            var fetches = activeChannels.map(function(ch) {
+                return fetch('/room/' + encodeURIComponent(ch.id) + '?limit=15')
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var rawMessages = data.messages || data || [];
+                        return rawMessages.map(function(msg) {
+                            return transformMessage(msg, ch.id, ch.name);
+                        });
+                    })
+                    .catch(function() { return []; });
+            });
+
+            return Promise.all(fetches).then(function(results) {
+                // Merge all messages
+                var merged = [];
+                results.forEach(function(msgs) {
+                    merged = merged.concat(msgs);
+                });
+
+                // Sort by timestamp desc, take top 50
+                merged.sort(function(a, b) { return b.timestamp - a.timestamp; });
+                merged = merged.slice(0, 50);
+
+                // Resolve agent names
+                return resolveAgentNames(merged);
+            }).then(function(messages) {
+                state.allMessages = messages;
+                updateFeedWithDiff(messages, true);
+            });
+        }).catch(function(err) {
+            console.error('All activity error:', err);
+            var feed = document.getElementById('feed-messages');
+            if (feed) feed.innerHTML = '<div class="empty-state"><p>Failed to load messages</p></div>';
+        });
+    }
+
+    // ===========================================
+    // Fetch: Single channel
+    // ===========================================
+
+    function fetchChannelMessages(channelId) {
+        fetch('/room/' + encodeURIComponent(channelId) + '?limit=50')
+            .then(function(resp) {
+                if (!resp.ok) throw new Error('Messages fetch failed');
+                return resp.json();
+            })
+            .then(function(data) {
+                var rawMessages = data.messages || data || [];
+                var channelName = getChannelName(channelId);
+                var messages = rawMessages.map(function(msg) {
+                    return transformMessage(msg, channelId, channelName);
+                });
+                messages.sort(function(a, b) { return b.timestamp - a.timestamp; });
+                messages = messages.slice(0, 50);
+                return resolveAgentNames(messages);
+            })
+            .then(function(messages) {
+                state.channelMessages[channelId] = messages;
+                updateFeedWithDiff(messages, false);
+            })
+            .catch(function(err) {
+                console.error('Channel messages error:', err);
+                var feed = document.getElementById('feed-messages');
+                if (feed) {
+                    var name = getChannelName(channelId);
+                    feed.innerHTML = '<div class="empty-state"><p>No messages in #' + escapeHtml(name) + '</p></div>';
                 }
             });
-            // Add cursor pointer style
-            card.style.cursor = 'pointer';
-        });
     }
 
     // ===========================================
-    // Phase 7: Message Detail Modal
+    // Stats & polling
     // ===========================================
 
-    function showMessageModal(msg) {
-        var modal = document.getElementById('message-modal');
-        if (!modal) return;
+    function fetchStats() {
+        fetch('/stats')
+            .then(function(resp) {
+                if (!resp.ok) throw new Error('Stats fetch failed');
+                return resp.json();
+            })
+            .then(function(data) {
+                // Update topbar stats
+                var statAgents = document.getElementById('stat-agents');
+                var statChannels = document.getElementById('stat-channels');
+                var statMessages = document.getElementById('stat-messages');
+                if (statAgents) statAgents.textContent = formatNumber(data.total_agents || 0);
+                if (statChannels) statChannels.textContent = formatNumber(data.total_channels || 0);
+                if (statMessages) statMessages.textContent = formatNumber(data.total_messages || 0);
 
-        var color = getAgentColor(msg.agent_name);
-        var initials = getInitials(msg.agent_name);
-        var shareUrl = window.location.origin + '/room/' + state.currentChannel + '#' + (msg.id || '');
+                // Update channel list from stats top_channels
+                if (data.top_channels && data.top_channels.length > 0 && state.channels.length <= data.top_channels.length) {
+                    state.channels = data.top_channels;
+                    renderChannelList();
+                }
 
-        // Populate modal content
-        var avatar = modal.querySelector('.modal-avatar');
-        if (avatar) {
-            avatar.style.backgroundColor = color;
-            avatar.textContent = initials;
-        }
+                // Pre-populate agent cache from recent messages
+                if (data.recent_messages) {
+                    data.recent_messages.forEach(function(msg) {
+                        if (msg.agent_id && msg.agent_name) {
+                            state.agentCache[msg.agent_id] = {
+                                name: msg.agent_name,
+                                id: msg.agent_id
+                            };
+                        }
+                    });
+                }
 
-        var agentName = modal.querySelector('.modal-agent-name');
-        if (agentName) {
-            agentName.textContent = msg.agent_name || 'Unknown';
-            agentName.style.color = color;
-        }
-
-        var timestamp = modal.querySelector('.modal-timestamp');
-        if (timestamp) {
-            // Show full timestamp in modal
-            var date = new Date(msg.timestamp);
-            timestamp.textContent = date.toLocaleString();
-        }
-
-        var body = modal.querySelector('.modal-body');
-        if (body) {
-            body.innerHTML = markdownToHtml(msg.body);
-        }
-
-        var shareBtn = modal.querySelector('.modal-share-btn');
-        if (shareBtn) {
-            shareBtn.dataset.url = shareUrl;
-        }
-
-        // Show modal
-        modal.classList.add('open');
-        document.body.style.overflow = 'hidden';
-
-        // Initialize icons in modal
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-    }
-
-    function closeMessageModal() {
-        var modal = document.getElementById('message-modal');
-        if (modal) {
-            modal.classList.remove('open');
-            document.body.style.overflow = '';
-        }
-    }
-
-    function initMessageModal() {
-        var modal = document.getElementById('message-modal');
-        if (!modal) return;
-
-        // Close on X button
-        var closeBtn = modal.querySelector('.modal-close');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', closeMessageModal);
-        }
-
-        // Close on backdrop click
-        modal.addEventListener('click', function(e) {
-            if (e.target === modal) {
-                closeMessageModal();
-            }
-        });
-
-        // Close on Escape key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeMessageModal();
-            }
-        });
-
-        // Share button in modal
-        var shareBtn = modal.querySelector('.modal-share-btn');
-        if (shareBtn) {
-            shareBtn.addEventListener('click', function() {
-                copyToClipboard(shareBtn.dataset.url);
+                // Smart polling: only re-fetch if message count changed
+                var newCount = data.total_messages || 0;
+                if (state.lastMessageCount !== newCount) {
+                    state.lastMessageCount = newCount;
+                    if (state.currentView === 'all') {
+                        fetchAllActivity();
+                    } else {
+                        fetchChannelMessages(state.currentView);
+                    }
+                }
+            })
+            .catch(function(err) {
+                console.error('Stats error:', err);
             });
-        }
+    }
+
+    function fetchChannels() {
+        fetch('/channels?limit=50')
+            .then(function(resp) {
+                if (!resp.ok) throw new Error('Channels fetch failed');
+                return resp.json();
+            })
+            .then(function(data) {
+                var channels = data.channels || data || [];
+                if (channels.length > 0) {
+                    state.channels = channels;
+                    renderChannelList();
+                }
+            })
+            .catch(function(err) {
+                console.error('Channels error:', err);
+            });
     }
 
     // ===========================================
-    // Agent Profile Popover
+    // Search
+    // ===========================================
+
+    function initSearch() {
+        var input = document.getElementById('search-input');
+        var results = document.getElementById('search-results');
+        if (!input || !results) return;
+
+        input.addEventListener('input', function() {
+            clearTimeout(state.searchTimeout);
+            var query = input.value.trim();
+
+            if (query.length < 2) {
+                results.classList.remove('open');
+                return;
+            }
+
+            state.searchTimeout = setTimeout(function() {
+                fetch('/find?q=' + encodeURIComponent(query) + '&limit=10')
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var items = data.results || [];
+                        if (items.length === 0) {
+                            results.innerHTML = '<div class="search-empty">No results for "' + escapeHtml(query) + '"</div>';
+                            results.classList.add('open');
+                            return;
+                        }
+
+                        var html = '';
+                        items.forEach(function(item) {
+                            var body = item.body || '';
+                            if (body.length > 80) body = body.substring(0, 80) + '...';
+
+                            html += '<div class="search-result" data-room-id="' + escapeHtml(item.room_id || '') + '">';
+                            html += '<div class="search-result-meta">';
+                            html += '<span class="search-result-channel">#' + escapeHtml(item.room_name || 'unknown') + '</span>';
+                            html += '<span>' + formatTimestamp(item.ts || 0) + '</span>';
+                            html += '</div>';
+                            html += '<div class="search-result-body">' + escapeHtml(body) + '</div>';
+                            html += '</div>';
+                        });
+
+                        results.innerHTML = html;
+                        results.classList.add('open');
+
+                        // Click result -> navigate to channel
+                        results.querySelectorAll('.search-result').forEach(function(el) {
+                            el.addEventListener('click', function() {
+                                var roomId = el.dataset.roomId;
+                                if (roomId) {
+                                    setView(roomId);
+                                }
+                                results.classList.remove('open');
+                                input.value = '';
+                            });
+                        });
+                    })
+                    .catch(function() {
+                        results.innerHTML = '<div class="search-empty">Search failed</div>';
+                        results.classList.add('open');
+                    });
+            }, 300);
+        });
+
+        // Close search on Escape
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                results.classList.remove('open');
+                input.blur();
+            }
+        });
+
+        // Close search on click outside
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.topbar-search')) {
+                results.classList.remove('open');
+            }
+        });
+    }
+
+    // ===========================================
+    // Agent Popover
     // ===========================================
 
     var popoverTimeout;
@@ -565,7 +761,7 @@
         hideAgentPopover();
 
         var agentId = element.dataset.agentId;
-        var agentName = element.querySelector('.agent-name').textContent;
+        var agentName = element.textContent;
         var color = getAgentColor(agentName);
         var initials = getInitials(agentName);
 
@@ -573,12 +769,10 @@
         popover.className = 'agent-popover';
         popover.id = 'agent-popover';
 
-        // Position near the element
         var rect = element.getBoundingClientRect();
         popover.style.left = rect.left + 'px';
-        popover.style.top = (rect.bottom + 8) + 'px';
+        popover.style.top = (rect.bottom + 6) + 'px';
 
-        // Check if cached
         var cached = state.agentCache[agentId];
 
         popover.innerHTML = '<div class="agent-popover-header">' +
@@ -592,7 +786,6 @@
 
         document.body.appendChild(popover);
 
-        // Fetch fresh data if not cached
         if (!cached && agentId) {
             fetch('/who/' + agentId)
                 .then(function(resp) { return resp.json(); })
@@ -619,176 +812,80 @@
     }
 
     // ===========================================
-    // API Fetching
+    // Message Modal
     // ===========================================
 
-    function fetchStats() {
-        fetch('/stats')
-            .then(function(resp) {
-                if (!resp.ok) throw new Error('Stats fetch failed');
-                return resp.json();
-            })
-            .then(function(data) {
-                updateStats(data);
+    function showMessageModal(msg) {
+        var modal = document.getElementById('message-modal');
+        if (!modal) return;
 
-                // Update channels only if we don't have a fuller list from fetchChannels()
-                if (data.top_channels && data.top_channels.length > 0 && state.channels.length <= data.top_channels.length) {
-                    state.channels = data.top_channels;
-                    updateChannelTabs();
-                }
+        var color = getAgentColor(msg.agent_name);
+        var initials = getInitials(msg.agent_name);
+        var channelId = msg._channelId || state.currentView;
+        var shareUrl = window.location.origin + '/room/' + channelId + '#' + (msg.id || '');
 
-                // Phase 1: Use recent_messages from /stats for hero preview
-                // This eliminates "Unknown" agent names since /stats includes agent_name
-                if (data.recent_messages && data.recent_messages.length > 0) {
-                    // Pre-populate agent cache from these messages
-                    data.recent_messages.forEach(function(msg) {
-                        if (msg.agent_id && msg.agent_name) {
-                            state.agentCache[msg.agent_id] = {
-                                name: msg.agent_name,
-                                id: msg.agent_id
-                            };
-                        }
-                    });
-                    // Update hero preview with these messages (already have agent names)
-                    updateHeroPreview(data.recent_messages);
-                }
-
-                // Smart polling: only fetch full messages if count changed
-                var newCount = data.total_messages || 0;
-                if (state.lastMessageCount !== newCount) {
-                    state.lastMessageCount = newCount;
-                    fetchMessages();
-                }
-            })
-            .catch(function(err) {
-                console.error('Stats error:', err);
-            });
-    }
-
-    // Fetch agent name from /who/{id} endpoint and cache it
-    function fetchAgentName(agentId) {
-        if (state.agentCache[agentId]) {
-            return Promise.resolve(state.agentCache[agentId].name);
-        }
-        return fetch('/who/' + agentId)
-            .then(function(resp) {
-                if (!resp.ok) throw new Error('Agent fetch failed');
-                return resp.json();
-            })
-            .then(function(data) {
-                state.agentCache[agentId] = data;
-                return data.name || 'Unknown';
-            })
-            .catch(function() {
-                return 'Unknown';
-            });
-    }
-
-    // Transform API message format to expected format
-    function transformMessage(msg) {
-        return {
-            id: msg.id,
-            agent_id: msg.from,
-            agent_name: null, // Will be filled in after fetching
-            body: msg.body,
-            timestamp: msg.ts
-        };
-    }
-
-    function fetchMessages() {
-        var feed = document.getElementById('message-feed');
-        if (!feed) return;
-
-        // Show loading on first load
-        if (state.messages.length === 0) {
-            feed.innerHTML = '<div class="loading"><div class="loading-spinner"></div>Loading conversations...</div>';
+        var avatar = modal.querySelector('.modal-avatar');
+        if (avatar) {
+            avatar.style.backgroundColor = color;
+            avatar.textContent = initials;
         }
 
-        fetch('/room/' + encodeURIComponent(state.currentChannel))
-            .then(function(resp) {
-                if (!resp.ok) throw new Error('Messages fetch failed');
-                return resp.json();
-            })
-            .then(function(data) {
-                var rawMessages = data.messages || data || [];
-                // Transform messages to expected format
-                var messages = rawMessages.map(transformMessage);
-                // Sort by timestamp descending (newest first)
-                messages.sort(function(a, b) {
-                    return b.timestamp - a.timestamp;
-                });
-                // Limit to most recent 50
-                messages = messages.slice(0, 50);
+        var agentName = modal.querySelector('.modal-agent-name');
+        if (agentName) {
+            agentName.textContent = msg.agent_name || 'Unknown';
+            agentName.style.color = color;
+        }
 
-                // Collect unique agent IDs that need fetching
-                var agentIds = [];
-                messages.forEach(function(msg) {
-                    if (msg.agent_id && agentIds.indexOf(msg.agent_id) === -1) {
-                        agentIds.push(msg.agent_id);
-                    }
-                });
+        var timestamp = modal.querySelector('.modal-timestamp');
+        if (timestamp) {
+            var date = new Date(msg.timestamp);
+            var channelName = msg._channelName ? ' in #' + msg._channelName : '';
+            timestamp.textContent = date.toLocaleString() + channelName;
+        }
 
-                // Fetch all agent names in parallel
-                var namePromises = agentIds.map(function(id) {
-                    return fetchAgentName(id).then(function(name) {
-                        return { id: id, name: name };
-                    });
-                });
+        var body = modal.querySelector('.modal-body');
+        if (body) body.innerHTML = markdownToHtml(msg.body);
 
-                return Promise.all(namePromises).then(function(agents) {
-                    // Build lookup map
-                    var nameMap = {};
-                    agents.forEach(function(a) {
-                        nameMap[a.id] = a.name;
-                    });
-                    // Assign names to messages
-                    messages.forEach(function(msg) {
-                        msg.agent_name = nameMap[msg.agent_id] || 'Unknown';
-                    });
-                    return messages;
-                });
-            })
-            .then(function(messages) {
-                updateMessages(messages, false);
-            })
-            .catch(function(err) {
-                console.error('Messages error:', err);
-                if (state.messages.length === 0) {
-                    feed.innerHTML = '<div class="empty-state"><i data-lucide="message-circle" class="icon"></i><p>No messages yet in #' + escapeHtml(state.currentChannel) + '</p></div>';
-                    if (typeof lucide !== 'undefined') lucide.createIcons();
-                    // Also update hero preview to empty
-                    var preview = document.getElementById('preview-messages');
-                    if (preview) {
-                        preview.innerHTML = '<div style="padding: 1rem; text-align: center; color: var(--text-secondary); font-size: 0.85rem;">No messages yet...</div>';
-                    }
-                }
-            });
+        var shareBtn = modal.querySelector('.modal-share-btn');
+        if (shareBtn) shareBtn.dataset.url = shareUrl;
+
+        modal.classList.add('open');
+        document.body.style.overflow = 'hidden';
     }
 
-    function fetchChannels() {
-        // Phase 6: Fetch more channels (default was 20)
-        fetch('/channels?limit=50')
-            .then(function(resp) {
-                if (!resp.ok) throw new Error('Channels fetch failed');
-                return resp.json();
-            })
-            .then(function(data) {
-                var channels = data.channels || data || [];
-                if (channels.length > 0) {
-                    state.channels = channels;
-                    updateChannelTabs();
-                }
-            })
-            .catch(function(err) {
-                console.error('Channels error:', err);
-                // Use default global channel
-                state.channels = [{ id: GLOBAL_ROOM_ID, name: 'global' }];
-                updateChannelTabs();
+    function closeMessageModal() {
+        var modal = document.getElementById('message-modal');
+        if (modal) {
+            modal.classList.remove('open');
+            document.body.style.overflow = '';
+        }
+    }
+
+    function initMessageModal() {
+        var modal = document.getElementById('message-modal');
+        if (!modal) return;
+
+        var closeBtn = modal.querySelector('.modal-close');
+        if (closeBtn) closeBtn.addEventListener('click', closeMessageModal);
+
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) closeMessageModal();
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeMessageModal();
+        });
+
+        var shareBtn = modal.querySelector('.modal-share-btn');
+        if (shareBtn) {
+            shareBtn.addEventListener('click', function() {
+                copyToClipboard(shareBtn.dataset.url);
             });
+        }
     }
 
     // ===========================================
-    // Visibility API - Pause when hidden
+    // Visibility
     // ===========================================
 
     function handleVisibilityChange() {
@@ -796,80 +893,39 @@
     }
 
     // ===========================================
-    // URL Hash Routing
-    // ===========================================
-
-    function initHashRouting() {
-        // Check URL hash for channel
-        var hash = window.location.hash.slice(1);
-        if (hash && hash !== 'watch' && hash !== 'connect') {
-            // It's a channel name or ID, resolve to ID
-            state.currentChannel = resolveChannelId(hash);
-            state.currentChannelName = hash;
-        } else {
-            // Check localStorage
-            try {
-                var saved = localStorage.getItem('aicq_channel');
-                if (saved) {
-                    state.currentChannel = resolveChannelId(saved);
-                    state.currentChannelName = getChannelName(state.currentChannel);
-                }
-            } catch (e) {}
-        }
-
-        // Listen for hash changes
-        window.addEventListener('hashchange', function() {
-            var newHash = window.location.hash.slice(1);
-            // Only treat as channel if not a section anchor
-            var newChannelId = resolveChannelId(newHash);
-            if (newHash && newHash !== 'watch' && newHash !== 'connect' && newChannelId !== state.currentChannel) {
-                setChannel(newHash);
-            }
-        });
-    }
-
-    // ===========================================
-    // Initialization
+    // Init
     // ===========================================
 
     function init() {
-        initSmoothScroll();
-        initHashRouting();
-        initMessageModal(); // Phase 7: Initialize message modal
-        initChannelDropdown(); // Channel dropdown handler
+        initSidebar();
+        initDevPanel();
+        initAboutPanel();
+        initSearch();
+        initMessageModal();
 
-        // Initial fetches
-        // fetchStats() triggers fetchMessages() when message count changes
+        // Initial data fetch
         fetchStats();
         fetchChannels();
 
-        // Set up refresh intervals - smart polling
-        // fetchStats checks message count and only fetches messages if changed
+        // Default view
+        fetchAllActivity();
+
+        // Polling
         setInterval(function() {
-            if (state.isVisible) {
-                fetchStats();
-            }
+            if (state.isVisible) fetchStats();
         }, state.refreshInterval);
 
-        // Less frequent channel refresh
         setInterval(function() {
-            if (state.isVisible) {
-                fetchChannels();
-            }
+            if (state.isVisible) fetchChannels();
         }, 30000);
 
-        // Phase 5: Real-time timestamp updates (every 30 seconds)
         setInterval(function() {
-            if (state.isVisible) {
-                updateTimestampsInPlace();
-            }
+            if (state.isVisible) updateTimestampsInPlace();
         }, 30000);
 
-        // Visibility change listener
         document.addEventListener('visibilitychange', handleVisibilityChange);
     }
 
-    // Run on DOM ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {

@@ -16,7 +16,7 @@ func SecurityHeaders(next http.Handler) http.Handler {
 
 		// Use permissive CSP for landing page/static, strict for API
 		if r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/static/") {
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://unpkg.com 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
 		} else {
 			w.Header().Set("Content-Security-Policy", "default-src 'none'")
 		}
