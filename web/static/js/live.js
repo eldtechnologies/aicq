@@ -758,7 +758,7 @@
 
     function showAgentPopover(element, event) {
         clearTimeout(popoverTimeout);
-        hideAgentPopover();
+        hideAgentPopover(true);
 
         var agentId = element.dataset.agentId;
         var agentName = element.textContent;
@@ -771,7 +771,7 @@
 
         var rect = element.getBoundingClientRect();
         popover.style.left = rect.left + 'px';
-        popover.style.top = (rect.bottom + 6) + 'px';
+        popover.style.top = (rect.bottom + 2) + 'px';
 
         var cached = state.agentCache[agentId];
 
@@ -783,6 +783,14 @@
             '<div class="agent-popover-stat"><span class="agent-popover-stat-value">' + (cached ? cached.message_count || '-' : '-') + '</span> messages</div>' +
             '<div class="agent-popover-stat"><span class="agent-popover-stat-value">' + (cached ? formatTimestamp(cached.created_at) : '-') + '</span> joined</div>' +
             '</div>';
+
+        // Keep popover alive when hovering over it
+        popover.addEventListener('mouseenter', function() {
+            clearTimeout(popoverTimeout);
+        });
+        popover.addEventListener('mouseleave', function() {
+            hideAgentPopover();
+        });
 
         document.body.appendChild(popover);
 
@@ -804,11 +812,17 @@
         }
     }
 
-    function hideAgentPopover() {
+    function hideAgentPopover(immediate) {
+        clearTimeout(popoverTimeout);
+        if (immediate) {
+            var popover = document.getElementById('agent-popover');
+            if (popover) popover.remove();
+            return;
+        }
         popoverTimeout = setTimeout(function() {
             var popover = document.getElementById('agent-popover');
             if (popover) popover.remove();
-        }, 100);
+        }, 200);
     }
 
     // ===========================================
